@@ -1,0 +1,388 @@
+/* JUST Sans Extra Light (200) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20ExLight.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20ExLight.woff") format("woff");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans Light (300) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Light.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans Regular (400) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Regular.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans Medium (500) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Medium.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Medium.woff") format("woff");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans SemiBold (600) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20SemiBold.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20SemiBold.woff") format("woff");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans Bold (700) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Bold.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JUST Sans Extra Bold (800) */
+@font-face {
+  font-family: "JUST Sans";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20ExBold.woff2") format("woff2"),
+       url("https://itzfizzdigital.b-cdn.net/fonts/JUST%20Sans/JUST%20Sans%20ExBold.woff") format("woff");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Neue Machina Light (300) */
+@font-face {
+  font-family: "Neue Machina";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/Neue%20Machina/NeueMachina-Light.woff") format("woff");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Neue Machina Regular (400) */
+@font-face {
+  font-family: "Neue Machina";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/Neue%20Machina/NeueMachina-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Neue Machina Ultrabold (900) */
+@font-face {
+  font-family: "Neue Machina";
+  src: url("https://itzfizzdigital.b-cdn.net/fonts/Neue%20Machina/NeueMachina-Ultrabold.woff") format("woff");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@import "tailwindcss";
+
+/* ---------- Design Tokens ---------- */
+:root {
+  /* Light */
+  --app-bg: #f9fafb;
+  --panel: #ffffff;
+  --text: #111827;
+  --muted: #4b5563;
+  --border: #e5e7eb;
+  --sidebar: #e5e7eb;
+  --input:#fff;
+
+  --sb-hover: #ffffff;
+  --profile-hover:#E9652C;
+  --bg-panel-sidebar:#e5e7eb;
+
+  /* ✅ Gradient tokens */
+  --brand-gradient: linear-gradient(
+    to right,
+    rgb(212 84 39 / 50%) 0%,
+    rgb(255 166 21 / 50%) 100%
+  );
+
+  /* ✅ Sidebar gradient (same colors, lighter opacity) */
+  --sidebar-gradient: linear-gradient(
+    to bottom,
+    rgb(212 84 39 / 100%) 0%,
+    rgb(255 166 21 / 100%) 100%
+  );
+
+--infoHighlight-gradient: linear-gradient(
+  to right,
+  #d45427 0%,
+  #ffa615 100%
+);
+
+--bg-panel: #F4F4F3;
+
+}
+
+html.dark {
+  --app-bg: #1f2121;
+  --panel: #1f2121;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --border: #374151;
+  --sidebar: #191a1a;
+--input:#303030;
+  --sb-hover: #303030;
+  --profile-hover:#3182ce;
+  --bg-panel-sidebar:#191a1a;
+
+  /* (Optional) keep same gradients in dark, or increase opacity a touch */
+  --brand-gradient: linear-gradient(
+    to right,
+    rgb(212 84 39 / 22%) 0%,
+    rgb(255 166 21 / 22%) 100%
+  );
+  --sidebar-gradient: linear-gradient(
+    to bottom,
+    rgb(212 84 39) 0%,
+    rgb(255 166 21) 100%
+  );
+
+  --bg-panel: #1f2121;
+}
+
+/* ---------- Base ---------- */
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--text);
+  font-family: "JUST Sans", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+/* ---------- Global Remap so existing classes auto-theme ---------- */
+/* backgrounds */
+.bg-white       { background-color: var(--panel) !important; }
+.bg-gray-50     { background-color: color-mix(in oklab, var(--panel) 85%, black 15%) !important; }
+.bg-gray-100    { background-color: var(--app-bg) !important; }
+
+/* text */
+.text-gray-900  { color: var(--text) !important; }
+.text-gray-800  { color: var(--text) !important; }
+.text-gray-700  { color: var(--muted) !important; }
+.text-gray-600  { color: var(--muted) !important; }
+.text-gray-500  { color: color-mix(in oklab, var(--muted) 85%, black 15%) !important; }
+
+/* borders */
+.border-gray-200 { border-color: var(--border) !important; }
+.border-gray-300 { border-color: color-mix(in oklab, var(--border) 90%, black 10%) !important; }
+
+/* sidebar helper */
+/* aside.w-\[80px\] {
+  background-color: var(--sidebar) !important;
+  border-color: var(--border) !important;
+} */
+
+/* inputs */
+input, textarea, select {
+  background-color: var(--panel);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* small elevation parity between light/dark */
+.shadow-sm, .shadow, .shadow-md, .shadow-lg {
+  box-shadow: 0 1px 2px rgba(0,0,0,.07), 0 1px 1px rgba(0,0,0,.06);
+}
+html.dark .shadow-sm, 
+html.dark .shadow, 
+html.dark .shadow-md, 
+html.dark .shadow-lg {
+  box-shadow: 0 1px 2px rgba(0,0,0,.35), 0 1px 1px rgba(0,0,0,.25);
+}
+/* ---------- Extras (opt-in): darker greys + strong app gradient ---------- */
+/* Nothing above is modified. These are additional tokens you can reference explicitly. */
+:root {
+  /* strong orange → amber gradient */
+  --app-gradient-strong: linear-gradient(to bottom, #d45427 0%, #ffa615 100%);
+
+  /* darker greys (use for panels/inputs/borders when you want a deeper dark look) */
+  --extra-panel-dark: #13161a;
+  --extra-input-dark: #15191d;
+  --extra-border-dark: #2a2d31;
+}
+
+html.dark {
+  --app-gradient-strong: linear-gradient(to bottom, #d45427 0%, #ffa615 100%);
+  --extra-panel-dark: #13161a;
+  --extra-input-dark: #15191d;
+  --extra-border-dark: #2a2d31;
+}
+
+/* Inactive step circle background per mode */
+html:not(.dark) .step-circle--inactive {
+  background-color: #e5e7eb !important; /* Tailwind bg-gray-200 */
+}
+
+html.dark .step-circle--inactive {
+  background-color: #303030 !important;
+}
+
+/* Make absolutely sure the number color is correct per mode */
+html:not(.dark) .step-circle--inactive > span {
+  color: #303030 !important;
+}
+
+html.dark .step-circle--inactive > span {
+  color: #ffffff !important;
+}
+
+/* DELETE/COMMENT this global override */
+/* Scoped accent ONLY for the Step slides */
+.slides-accent {
+  --input: var(--panel);        /* keep using your existing panel color */
+  --border: #ca5223;            /* brand border */
+  --text: var(--text);          /* inherit existing */
+  --muted: var(--muted);
+
+  /* item hover/focus using brand tints */
+  --menuHover: #fdf2ef;
+  --menuFocus: #fbe5df;
+}
+
+html.dark .slides-accent {
+  --input: var(--panel);
+  --border: #ca5223;
+  --text: var(--text);
+  --muted: var(--muted);
+
+  --menuHover: rgba(202, 82, 35, 0.25);
+  --menuFocus: rgba(202, 82, 35, 0.4);
+}
+
+/* Force brand-dark text color in light mode */
+.text-brand-strong {
+  color: #1f2121 !important;
+}
+
+/* Reusable chip style: light = #F6F8FB + #1f2121, dark = #303030 + dark gray text */
+.seo-chip {
+  background-color: #F6F8FB !important;
+  color: #1f2121 !important;
+  border-color: var(--border) !important;
+}
+
+.dark .seo-chip {
+  background-color: #303030 !important;
+  color: #9AA3B2 !important; /* dark gray text */
+}
+
+:root {
+  /* Desktop (unchanged): semi-transparent */
+  --brand-gradient: linear-gradient(
+    to right,
+    rgb(212 84 39 / 50%) 0%,
+    rgb(255 166 21 / 50%) 100%
+  );
+
+  /* Full-strength base + shared overlay */
+  --brand-gradient-strong: linear-gradient(to right, #d45427 0%, #ffa615 100%);
+  --brand-overlay-alpha: 0.25; /* tweak 0.06–0.16 */
+  --brand-gradient-overlay: linear-gradient(
+    to bottom,
+    rgb(0 0 0 / var(--brand-overlay-alpha)),
+    rgb(0 0 0 / var(--brand-overlay-alpha))
+  );
+}
+
+/* < lg (1024px): FULL opacity + slight black overlay — works for LIGHT & DARK */
+@media (max-width: 1023.98px) {
+  :root,
+  .dark:root { /* note: .dark on <html> in Tailwind */
+    --brand-gradient: var(--brand-gradient-overlay), var(--brand-gradient-strong);
+  }
+}
+
+/* === Exceptions for SeoAdvancedOptimize === */
+.seo-adv .bg-gray-100  { background-color: #f3f4f6 !important; } /* progress track + gray badge */
+.seo-adv .bg-emerald-50{ background-color: #ecfdf5 !important; } /* green badge */
+.seo-adv .bg-amber-50  { background-color: #fef3c7 !important; } /* amber badge */
+
+/* keep card borders/text crisp in light mode inside this component */
+.seo-adv .border-gray-200 { border-color: #e5e7eb !important; }
+.seo-adv .text-gray-900   { color: #111827 !important; }
+.seo-adv .text-gray-700   { color: #374151 !important; }
+
+/* --- FixThis icon + title theme rules --- */
+.fixthis-badge {
+  background-color: #ffffff !important; /* light mode: white box */
+  color: #111827 !important;            /* light mode: dark text */
+}
+html.dark .fixthis-badge {
+  background-color: #111827 !important; /* dark mode: dark box */
+  color: #ffffff !important;            /* dark mode: white text */
+}
+
+.fixthis-title {
+  color: #ffffff !important;            /* light mode: white text */
+}
+html.dark .fixthis-title {
+  color: #111827 !important;            /* dark mode: dark text */
+}
+
+/* === Keyword Chip Light/Dark Fix (globals.css) === */
+:root {
+  /* Light mode */
+  --chip-bg: #f7f7f7;         /* light grey */
+  --chip-hover-bg: #ededed;   /* slightly darker grey */
+  --chip-text: #555;
+  --chip-border: #d0d0d0;
+  --chip-active-bg: #ffffff;  /* white when active */
+  --chip-active-text: #222;
+}
+
+.dark {
+  /* Dark mode */
+  --chip-bg: #202020; /* mid grey for inactive */
+  --chip-hover-bg: #2e2e2e;   /* darker hover */
+  --chip-text: #cccccc;
+  --chip-border: #444;
+  --chip-active-bg: #000000;  /* black when active */
+  --chip-active-text: #ffffff;
+}
+
+.keyword-chip {
+  background-color: var(--chip-bg);
+  color: var(--chip-text);
+  border: 1px solid var(--chip-border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.keyword-chip:hover {
+  background-color: var(--chip-hover-bg);
+}
+
+.keyword-chip.active {
+  background-color: var(--chip-active-bg);
+  color: var(--chip-active-text);
+  border-color: #d45427;
+}

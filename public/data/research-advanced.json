@@ -1,0 +1,1830 @@
+{
+  "pages": [
+    {
+      "domain": "google.com",
+      "ui": {
+        "query": "mastering google search"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Mastering Google Search: Tips, Operators, and Best Practices"
+        },
+        {
+          "level": "H2",
+          "title": "Understanding How Google Ranks Results"
+        },
+        {
+          "level": "H2",
+          "title": "Essential Search Operators for Everyday Use"
+        },
+        {
+          "level": "H3",
+          "title": "Exact Match, Exclusions, and Site-Specific Queries"
+        },
+        {
+          "level": "H2",
+          "title": "Using Google Images, News, and Scholar Effectively"
+        },
+        {
+          "level": "H2",
+          "title": "Local Results and Maps: Finding Places Faster"
+        },
+        {
+          "level": "H2",
+          "title": "Privacy & Personalization Settings to Know"
+        },
+        {
+          "level": "H3",
+          "title": "Search History, Incognito, and Ad Settings Controls"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "bing.com",
+            "authority": 45,
+            "estimatedTrafficK": 534,
+            "commonKeywords": 1966,
+            "sampleUrls": [
+              "https://bing.com/sample-1",
+              "https://bing.com/sample-2",
+              "https://bing.com/sample-3"
+            ]
+          },
+          {
+            "domain": "duckduckgo.com",
+            "authority": 45,
+            "estimatedTrafficK": 452,
+            "commonKeywords": 1575,
+            "sampleUrls": [
+              "https://duckduckgo.com/sample-1",
+              "https://duckduckgo.com/sample-2",
+              "https://duckduckgo.com/sample-3"
+            ]
+          },
+          {
+            "domain": "yahoo.com",
+            "authority": 74,
+            "estimatedTrafficK": 201,
+            "commonKeywords": 2291,
+            "sampleUrls": [
+              "https://yahoo.com/sample-1",
+              "https://yahoo.com/sample-2",
+              "https://yahoo.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Mastering Google Search: Tips, Operators, and Best Practices",
+            "count": 15
+          },
+          {
+            "heading": "Understanding How Google Ranks Results",
+            "count": 18
+          },
+          {
+            "heading": "Essential Search Operators for Everyday Use",
+            "count": 4
+          },
+          {
+            "heading": "Exact Match, Exclusions, and Site-Specific Queries",
+            "count": 5
+          },
+          {
+            "heading": "Using Google Images, News, and Scholar Effectively",
+            "count": 18
+          },
+          {
+            "heading": "Local Results and Maps: Finding Places Faster",
+            "count": 4
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "operators",
+            "score": 97
+          },
+          {
+            "term": "site:",
+            "score": 90
+          },
+          {
+            "term": "intitle:",
+            "score": 92
+          },
+          {
+            "term": "cache",
+            "score": 87
+          },
+          {
+            "term": "maps",
+            "score": 82
+          },
+          {
+            "term": "news",
+            "score": 75
+          },
+          {
+            "term": "scholar",
+            "score": 76
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": true,
+            "count": 11
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 3
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 5
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 8
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 5
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Mastering Google Search: Tips, Operators, and Best Practices",
+            "serpMentions": 47,
+            "avgPosition": 9.1
+          },
+          {
+            "heading": "Understanding How Google Ranks Results",
+            "serpMentions": 46,
+            "avgPosition": 3.3
+          },
+          {
+            "heading": "Essential Search Operators for Everyday Use",
+            "serpMentions": 22,
+            "avgPosition": 7.7
+          },
+          {
+            "heading": "Exact Match, Exclusions, and Site-Specific Queries",
+            "serpMentions": 38,
+            "avgPosition": 8.3
+          },
+          {
+            "heading": "Using Google Images, News, and Scholar Effectively",
+            "serpMentions": 7,
+            "avgPosition": 17.6
+          }
+        ]
+      }
+    },
+    {
+      "domain": "amazon.in",
+      "ui": {
+        "query": "amazon india shopping guide"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Amazon India Shopping Guide: Deals, Delivery, and Returns"
+        },
+        {
+          "level": "H2",
+          "title": "Prime Benefits for Indian Shoppers"
+        },
+        {
+          "level": "H2",
+          "title": "Payment Methods and UPI on Amazon.in"
+        },
+        {
+          "level": "H3",
+          "title": "Cashback, No-Cost EMI, and Coupons"
+        },
+        {
+          "level": "H2",
+          "title": "Delivery Timelines and Shipping Options"
+        },
+        {
+          "level": "H2",
+          "title": "Returns, Replacements, and Refund Policies"
+        },
+        {
+          "level": "H2",
+          "title": "Finding Authentic Sellers and Reading Reviews"
+        },
+        {
+          "level": "H3",
+          "title": "Wishlists, Price Alerts, and Deal Days (Great Indian Festival)"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "flipkart.com",
+            "authority": 75,
+            "estimatedTrafficK": 152,
+            "commonKeywords": 2935,
+            "sampleUrls": [
+              "https://flipkart.com/sample-1",
+              "https://flipkart.com/sample-2",
+              "https://flipkart.com/sample-3"
+            ]
+          },
+          {
+            "domain": "myntra.com",
+            "authority": 94,
+            "estimatedTrafficK": 109,
+            "commonKeywords": 3313,
+            "sampleUrls": [
+              "https://myntra.com/sample-1",
+              "https://myntra.com/sample-2",
+              "https://myntra.com/sample-3"
+            ]
+          },
+          {
+            "domain": "ajio.com",
+            "authority": 63,
+            "estimatedTrafficK": 145,
+            "commonKeywords": 3933,
+            "sampleUrls": [
+              "https://ajio.com/sample-1",
+              "https://ajio.com/sample-2",
+              "https://ajio.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Amazon India Shopping Guide: Deals, Delivery, and Returns",
+            "count": 7
+          },
+          {
+            "heading": "Prime Benefits for Indian Shoppers",
+            "count": 6
+          },
+          {
+            "heading": "Payment Methods and UPI on Amazon.in",
+            "count": 11
+          },
+          {
+            "heading": "Cashback, No-Cost EMI, and Coupons",
+            "count": 9
+          },
+          {
+            "heading": "Delivery Timelines and Shipping Options",
+            "count": 8
+          },
+          {
+            "heading": "Returns, Replacements, and Refund Policies",
+            "count": 9
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "prime",
+            "score": 63
+          },
+          {
+            "term": "emi",
+            "score": 50
+          },
+          {
+            "term": "coupon",
+            "score": 45
+          },
+          {
+            "term": "delivery",
+            "score": 58
+          },
+          {
+            "term": "up i",
+            "score": 87
+          },
+          {
+            "term": "returns",
+            "score": 47
+          },
+          {
+            "term": "no-cost",
+            "score": 85
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": false,
+            "count": 12
+          },
+          {
+            "feature": "HowTo",
+            "presence": false,
+            "count": 5
+          },
+          {
+            "feature": "Video",
+            "presence": false,
+            "count": 7
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 17
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 4
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Amazon India Shopping Guide: Deals, Delivery, and Returns",
+            "serpMentions": 28,
+            "avgPosition": 11.4
+          },
+          {
+            "heading": "Prime Benefits for Indian Shoppers",
+            "serpMentions": 6,
+            "avgPosition": 17.7
+          },
+          {
+            "heading": "Payment Methods and UPI on Amazon.in",
+            "serpMentions": 21,
+            "avgPosition": 2.4
+          },
+          {
+            "heading": "Cashback, No-Cost EMI, and Coupons",
+            "serpMentions": 49,
+            "avgPosition": 7.0
+          },
+          {
+            "heading": "Delivery Timelines and Shipping Options",
+            "serpMentions": 30,
+            "avgPosition": 8.3
+          }
+        ]
+      }
+    },
+    {
+      "domain": "flipkart.com",
+      "ui": {
+        "query": "flipkart buying guide"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Flipkart Buying Guide: Smart Shopping for Every Category"
+        },
+        {
+          "level": "H2",
+          "title": "Big Billion Days: How to Prepare and What to Buy"
+        },
+        {
+          "level": "H2",
+          "title": "Assured Badges, Seller Ratings, and Return Windows"
+        },
+        {
+          "level": "H3",
+          "title": "Product Exchanges and Open-Box Delivery"
+        },
+        {
+          "level": "H2",
+          "title": "Bank Offers, EMI, and SuperCoins Explained"
+        },
+        {
+          "level": "H2",
+          "title": "Order Tracking and Customer Support Tips"
+        },
+        {
+          "level": "H2",
+          "title": "Electronics vs. Fashion: Category-Specific Checks"
+        },
+        {
+          "level": "H3",
+          "title": "Warranty, Installation, and Service Center Coverage"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "amazon.in",
+            "authority": 85,
+            "estimatedTrafficK": 285,
+            "commonKeywords": 3896,
+            "sampleUrls": [
+              "https://amazon.in/sample-1",
+              "https://amazon.in/sample-2",
+              "https://amazon.in/sample-3"
+            ]
+          },
+          {
+            "domain": "ajio.com",
+            "authority": 51,
+            "estimatedTrafficK": 383,
+            "commonKeywords": 2716,
+            "sampleUrls": [
+              "https://ajio.com/sample-1",
+              "https://ajio.com/sample-2",
+              "https://ajio.com/sample-3"
+            ]
+          },
+          {
+            "domain": "snapdeal.com",
+            "authority": 55,
+            "estimatedTrafficK": 429,
+            "commonKeywords": 3978,
+            "sampleUrls": [
+              "https://snapdeal.com/sample-1",
+              "https://snapdeal.com/sample-2",
+              "https://snapdeal.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Flipkart Buying Guide: Smart Shopping for Every Category",
+            "count": 17
+          },
+          {
+            "heading": "Big Billion Days: How to Prepare and What to Buy",
+            "count": 15
+          },
+          {
+            "heading": "Assured Badges, Seller Ratings, and Return Windows",
+            "count": 17
+          },
+          {
+            "heading": "Product Exchanges and Open-Box Delivery",
+            "count": 7
+          },
+          {
+            "heading": "Bank Offers, EMI, and SuperCoins Explained",
+            "count": 10
+          },
+          {
+            "heading": "Order Tracking and Customer Support Tips",
+            "count": 6
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "return",
+            "score": 58
+          },
+          {
+            "term": "assured",
+            "score": 54
+          },
+          {
+            "term": "supercoins",
+            "score": 93
+          },
+          {
+            "term": "open-box",
+            "score": 90
+          },
+          {
+            "term": "warranty",
+            "score": 62
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": true,
+            "count": 8
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 4
+          },
+          {
+            "feature": "Video",
+            "presence": false,
+            "count": 4
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 19
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 4
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Flipkart Buying Guide: Smart Shopping for Every Category",
+            "serpMentions": 19,
+            "avgPosition": 5.2
+          },
+          {
+            "heading": "Big Billion Days: How to Prepare and What to Buy",
+            "serpMentions": 35,
+            "avgPosition": 9.5
+          },
+          {
+            "heading": "Assured Badges, Seller Ratings, and Return Windows",
+            "serpMentions": 59,
+            "avgPosition": 15.9
+          },
+          {
+            "heading": "Product Exchanges and Open-Box Delivery",
+            "serpMentions": 35,
+            "avgPosition": 11.6
+          },
+          {
+            "heading": "Bank Offers, EMI, and SuperCoins Explained",
+            "serpMentions": 13,
+            "avgPosition": 14.9
+          }
+        ]
+      }
+    },
+    {
+      "domain": "myntra.com",
+      "ui": {
+        "query": "myntra fashion guide"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Myntra Fashion Guide: Trends, Sizing, and Easy Returns"
+        },
+        {
+          "level": "H2",
+          "title": "Top Indian Fashion Brands on Myntra"
+        },
+        {
+          "level": "H2",
+          "title": "Seasonal Sales and End-of-Reason Offers"
+        },
+        {
+          "level": "H3",
+          "title": "Saving More with Myntra Insider Program"
+        },
+        {
+          "level": "H2",
+          "title": "Understanding Size Charts and Fit Guides"
+        },
+        {
+          "level": "H2",
+          "title": "Return Policy for Fashion and Accessories"
+        },
+        {
+          "level": "H2",
+          "title": "Exploring the Studio Feature for Style Inspiration"
+        },
+        {
+          "level": "H3",
+          "title": "Personalized Recommendations and Lookbooks"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "ajio.com",
+            "authority": 76,
+            "estimatedTrafficK": 462,
+            "commonKeywords": 1134,
+            "sampleUrls": [
+              "https://ajio.com/sample-1",
+              "https://ajio.com/sample-2",
+              "https://ajio.com/sample-3"
+            ]
+          },
+          {
+            "domain": "tatacliq.com",
+            "authority": 83,
+            "estimatedTrafficK": 672,
+            "commonKeywords": 578,
+            "sampleUrls": [
+              "https://tatacliq.com/sample-1",
+              "https://tatacliq.com/sample-2",
+              "https://tatacliq.com/sample-3"
+            ]
+          },
+          {
+            "domain": "amazon.in",
+            "authority": 64,
+            "estimatedTrafficK": 638,
+            "commonKeywords": 1399,
+            "sampleUrls": [
+              "https://amazon.in/sample-1",
+              "https://amazon.in/sample-2",
+              "https://amazon.in/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Myntra Fashion Guide: Trends, Sizing, and Easy Returns",
+            "count": 6
+          },
+          {
+            "heading": "Top Indian Fashion Brands on Myntra",
+            "count": 11
+          },
+          {
+            "heading": "Seasonal Sales and End-of-Reason Offers",
+            "count": 11
+          },
+          {
+            "heading": "Saving More with Myntra Insider Program",
+            "count": 16
+          },
+          {
+            "heading": "Understanding Size Charts and Fit Guides",
+            "count": 15
+          },
+          {
+            "heading": "Return Policy for Fashion and Accessories",
+            "count": 17
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "insider",
+            "score": 96
+          },
+          {
+            "term": "size chart",
+            "score": 77
+          },
+          {
+            "term": "eors",
+            "score": 96
+          },
+          {
+            "term": "brand",
+            "score": 64
+          },
+          {
+            "term": "style",
+            "score": 79
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": true,
+            "count": 7
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 0
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 1
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 7
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 6
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Myntra Fashion Guide: Trends, Sizing, and Easy Returns",
+            "serpMentions": 17,
+            "avgPosition": 3.4
+          },
+          {
+            "heading": "Top Indian Fashion Brands on Myntra",
+            "serpMentions": 12,
+            "avgPosition": 4.6
+          },
+          {
+            "heading": "Seasonal Sales and End-of-Reason Offers",
+            "serpMentions": 56,
+            "avgPosition": 9.0
+          },
+          {
+            "heading": "Saving More with Myntra Insider Program",
+            "serpMentions": 29,
+            "avgPosition": 3.0
+          },
+          {
+            "heading": "Understanding Size Charts and Fit Guides",
+            "serpMentions": 57,
+            "avgPosition": 7.4
+          }
+        ]
+      }
+    },
+    {
+      "domain": "meesho.com",
+      "ui": {
+        "query": "meesho reseller guide"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Meesho Reseller Guide: How to Earn and Sell Online"
+        },
+        {
+          "level": "H2",
+          "title": "Understanding the Meesho Business Model"
+        },
+        {
+          "level": "H2",
+          "title": "Steps to Start Your Online Store on Meesho"
+        },
+        {
+          "level": "H3",
+          "title": "Setting Product Prices and Profit Margins"
+        },
+        {
+          "level": "H2",
+          "title": "Popular Product Categories and Suppliers"
+        },
+        {
+          "level": "H2",
+          "title": "Commission Structure and Payment Timelines"
+        },
+        {
+          "level": "H2",
+          "title": "Marketing Your Products on WhatsApp and Facebook"
+        },
+        {
+          "level": "H3",
+          "title": "Tips for Increasing Sales as a Meesho Reseller"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "shop101.com",
+            "authority": 52,
+            "estimatedTrafficK": 581,
+            "commonKeywords": 1653,
+            "sampleUrls": [
+              "https://shop101.com/sample-1",
+              "https://shop101.com/sample-2",
+              "https://shop101.com/sample-3"
+            ]
+          },
+          {
+            "domain": "glowroad.com",
+            "authority": 41,
+            "estimatedTrafficK": 605,
+            "commonKeywords": 2767,
+            "sampleUrls": [
+              "https://glowroad.com/sample-1",
+              "https://glowroad.com/sample-2",
+              "https://glowroad.com/sample-3"
+            ]
+          },
+          {
+            "domain": "udaan.com",
+            "authority": 58,
+            "estimatedTrafficK": 665,
+            "commonKeywords": 3090,
+            "sampleUrls": [
+              "https://udaan.com/sample-1",
+              "https://udaan.com/sample-2",
+              "https://udaan.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Meesho Reseller Guide: How to Earn and Sell Online",
+            "count": 17
+          },
+          {
+            "heading": "Understanding the Meesho Business Model",
+            "count": 4
+          },
+          {
+            "heading": "Steps to Start Your Online Store on Meesho",
+            "count": 5
+          },
+          {
+            "heading": "Setting Product Prices and Profit Margins",
+            "count": 13
+          },
+          {
+            "heading": "Popular Product Categories and Suppliers",
+            "count": 10
+          },
+          {
+            "heading": "Commission Structure and Payment Timelines",
+            "count": 5
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "reseller",
+            "score": 89
+          },
+          {
+            "term": "margin",
+            "score": 93
+          },
+          {
+            "term": "supplier",
+            "score": 63
+          },
+          {
+            "term": "catalog",
+            "score": 83
+          },
+          {
+            "term": "commission",
+            "score": 83
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": false,
+            "count": 1
+          },
+          {
+            "feature": "HowTo",
+            "presence": false,
+            "count": 6
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 3
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 24
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 10
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Meesho Reseller Guide: How to Earn and Sell Online",
+            "serpMentions": 31,
+            "avgPosition": 3.6
+          },
+          {
+            "heading": "Understanding the Meesho Business Model",
+            "serpMentions": 43,
+            "avgPosition": 7.8
+          },
+          {
+            "heading": "Steps to Start Your Online Store on Meesho",
+            "serpMentions": 57,
+            "avgPosition": 12.0
+          },
+          {
+            "heading": "Setting Product Prices and Profit Margins",
+            "serpMentions": 27,
+            "avgPosition": 7.6
+          },
+          {
+            "heading": "Popular Product Categories and Suppliers",
+            "serpMentions": 30,
+            "avgPosition": 10.5
+          }
+        ]
+      }
+    },
+    {
+      "domain": "itzfizz.com",
+      "ui": {
+        "query": "itzfizz beverage brand story"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "ItzFizz: The Sparkling Beverage Revolution"
+        },
+        {
+          "level": "H2",
+          "title": "Unique Flavors and Ingredient Transparency"
+        },
+        {
+          "level": "H2",
+          "title": "Sustainability in Packaging and Production"
+        },
+        {
+          "level": "H3",
+          "title": "Eco-friendly Bottles and Carbon Footprint Goals"
+        },
+        {
+          "level": "H2",
+          "title": "Brand Story: From Startup to Household Name"
+        },
+        {
+          "level": "H2",
+          "title": "Collaborations and Limited Edition Launches"
+        },
+        {
+          "level": "H2",
+          "title": "Why Health-Conscious Consumers Love ItzFizz"
+        },
+        {
+          "level": "H3",
+          "title": "Nutritional Profile and Low Sugar Promise"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "cocacola.com",
+            "authority": 63,
+            "estimatedTrafficK": 270,
+            "commonKeywords": 3805,
+            "sampleUrls": [
+              "https://cocacola.com/sample-1",
+              "https://cocacola.com/sample-2",
+              "https://cocacola.com/sample-3"
+            ]
+          },
+          {
+            "domain": "pepsi.com",
+            "authority": 43,
+            "estimatedTrafficK": 707,
+            "commonKeywords": 590,
+            "sampleUrls": [
+              "https://pepsi.com/sample-1",
+              "https://pepsi.com/sample-2",
+              "https://pepsi.com/sample-3"
+            ]
+          },
+          {
+            "domain": "paperboatdrinks.com",
+            "authority": 80,
+            "estimatedTrafficK": 440,
+            "commonKeywords": 2875,
+            "sampleUrls": [
+              "https://paperboatdrinks.com/sample-1",
+              "https://paperboatdrinks.com/sample-2",
+              "https://paperboatdrinks.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "ItzFizz: The Sparkling Beverage Revolution",
+            "count": 13
+          },
+          {
+            "heading": "Unique Flavors and Ingredient Transparency",
+            "count": 8
+          },
+          {
+            "heading": "Sustainability in Packaging and Production",
+            "count": 8
+          },
+          {
+            "heading": "Eco-friendly Bottles and Carbon Footprint Goals",
+            "count": 16
+          },
+          {
+            "heading": "Brand Story: From Startup to Household Name",
+            "count": 16
+          },
+          {
+            "heading": "Collaborations and Limited Edition Launches",
+            "count": 13
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "sparkling",
+            "score": 53
+          },
+          {
+            "term": "low sugar",
+            "score": 93
+          },
+          {
+            "term": "flavors",
+            "score": 45
+          },
+          {
+            "term": "sustainability",
+            "score": 68
+          },
+          {
+            "term": "eco",
+            "score": 50
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": true,
+            "count": 10
+          },
+          {
+            "feature": "HowTo",
+            "presence": false,
+            "count": 0
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 7
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 11
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 7
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "ItzFizz: The Sparkling Beverage Revolution",
+            "serpMentions": 34,
+            "avgPosition": 3.0
+          },
+          {
+            "heading": "Unique Flavors and Ingredient Transparency",
+            "serpMentions": 32,
+            "avgPosition": 3.4
+          },
+          {
+            "heading": "Sustainability in Packaging and Production",
+            "serpMentions": 10,
+            "avgPosition": 10.1
+          },
+          {
+            "heading": "Eco-friendly Bottles and Carbon Footprint Goals",
+            "serpMentions": 59,
+            "avgPosition": 17.2
+          },
+          {
+            "heading": "Brand Story: From Startup to Household Name",
+            "serpMentions": 55,
+            "avgPosition": 9.1
+          }
+        ]
+      }
+    },
+    {
+      "domain": "loyora.com",
+      "ui": {
+        "query": "loyora jewelry brand overview"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Loyora Jewelry: Craftsmanship Meets Elegance"
+        },
+        {
+          "level": "H2",
+          "title": "The Story Behind the Brand"
+        },
+        {
+          "level": "H2",
+          "title": "Signature Collections and Materials"
+        },
+        {
+          "level": "H3",
+          "title": "Ethical Sourcing and Artisanal Techniques"
+        },
+        {
+          "level": "H2",
+          "title": "How to Style Loyora Jewelry for Occasions"
+        },
+        {
+          "level": "H2",
+          "title": "Customer Reviews and Brand Loyalty"
+        },
+        {
+          "level": "H2",
+          "title": "Packaging, Warranty, and After-Sales Care"
+        },
+        {
+          "level": "H3",
+          "title": "Personalization and Gift Options"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "tanishq.co.in",
+            "authority": 92,
+            "estimatedTrafficK": 480,
+            "commonKeywords": 1373,
+            "sampleUrls": [
+              "https://tanishq.co.in/sample-1",
+              "https://tanishq.co.in/sample-2",
+              "https://tanishq.co.in/sample-3"
+            ]
+          },
+          {
+            "domain": "bluestone.com",
+            "authority": 80,
+            "estimatedTrafficK": 84,
+            "commonKeywords": 922,
+            "sampleUrls": [
+              "https://bluestone.com/sample-1",
+              "https://bluestone.com/sample-2",
+              "https://bluestone.com/sample-3"
+            ]
+          },
+          {
+            "domain": "caratlane.com",
+            "authority": 81,
+            "estimatedTrafficK": 384,
+            "commonKeywords": 1782,
+            "sampleUrls": [
+              "https://caratlane.com/sample-1",
+              "https://caratlane.com/sample-2",
+              "https://caratlane.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Loyora Jewelry: Craftsmanship Meets Elegance",
+            "count": 17
+          },
+          {
+            "heading": "The Story Behind the Brand",
+            "count": 6
+          },
+          {
+            "heading": "Signature Collections and Materials",
+            "count": 10
+          },
+          {
+            "heading": "Ethical Sourcing and Artisanal Techniques",
+            "count": 10
+          },
+          {
+            "heading": "How to Style Loyora Jewelry for Occasions",
+            "count": 5
+          },
+          {
+            "heading": "Customer Reviews and Brand Loyalty",
+            "count": 15
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "handcrafted",
+            "score": 63
+          },
+          {
+            "term": "gold",
+            "score": 62
+          },
+          {
+            "term": "silver",
+            "score": 73
+          },
+          {
+            "term": "ethically sourced",
+            "score": 61
+          },
+          {
+            "term": "warranty",
+            "score": 85
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": false,
+            "count": 9
+          },
+          {
+            "feature": "HowTo",
+            "presence": false,
+            "count": 7
+          },
+          {
+            "feature": "Video",
+            "presence": false,
+            "count": 0
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 14
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 8
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Loyora Jewelry: Craftsmanship Meets Elegance",
+            "serpMentions": 8,
+            "avgPosition": 2.8
+          },
+          {
+            "heading": "The Story Behind the Brand",
+            "serpMentions": 35,
+            "avgPosition": 1.9
+          },
+          {
+            "heading": "Signature Collections and Materials",
+            "serpMentions": 16,
+            "avgPosition": 4.3
+          },
+          {
+            "heading": "Ethical Sourcing and Artisanal Techniques",
+            "serpMentions": 27,
+            "avgPosition": 8.7
+          },
+          {
+            "heading": "How to Style Loyora Jewelry for Occasions",
+            "serpMentions": 51,
+            "avgPosition": 1.6
+          }
+        ]
+      }
+    },
+    {
+      "domain": "waterstonindia.com",
+      "ui": {
+        "query": "waterston india services overview"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Waterston India: Professional Services You Can Trust"
+        },
+        {
+          "level": "H2",
+          "title": "Core Services Offered by Waterston"
+        },
+        {
+          "level": "H2",
+          "title": "Industries We Serve"
+        },
+        {
+          "level": "H3",
+          "title": "Case Studies and Client Success Stories"
+        },
+        {
+          "level": "H2",
+          "title": "Technology and Data-Driven Insights"
+        },
+        {
+          "level": "H2",
+          "title": "Leadership, Team, and Values"
+        },
+        {
+          "level": "H2",
+          "title": "Contact and Partnership Opportunities"
+        },
+        {
+          "level": "H3",
+          "title": "How to Request a Consultation"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "deloitte.com",
+            "authority": 48,
+            "estimatedTrafficK": 656,
+            "commonKeywords": 1881,
+            "sampleUrls": [
+              "https://deloitte.com/sample-1",
+              "https://deloitte.com/sample-2",
+              "https://deloitte.com/sample-3"
+            ]
+          },
+          {
+            "domain": "pwc.com",
+            "authority": 55,
+            "estimatedTrafficK": 879,
+            "commonKeywords": 3005,
+            "sampleUrls": [
+              "https://pwc.com/sample-1",
+              "https://pwc.com/sample-2",
+              "https://pwc.com/sample-3"
+            ]
+          },
+          {
+            "domain": "kpmg.com",
+            "authority": 46,
+            "estimatedTrafficK": 625,
+            "commonKeywords": 2060,
+            "sampleUrls": [
+              "https://kpmg.com/sample-1",
+              "https://kpmg.com/sample-2",
+              "https://kpmg.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Waterston India: Professional Services You Can Trust",
+            "count": 7
+          },
+          {
+            "heading": "Core Services Offered by Waterston",
+            "count": 4
+          },
+          {
+            "heading": "Industries We Serve",
+            "count": 11
+          },
+          {
+            "heading": "Case Studies and Client Success Stories",
+            "count": 7
+          },
+          {
+            "heading": "Technology and Data-Driven Insights",
+            "count": 14
+          },
+          {
+            "heading": "Leadership, Team, and Values",
+            "count": 9
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "consulting",
+            "score": 82
+          },
+          {
+            "term": "digital",
+            "score": 53
+          },
+          {
+            "term": "analytics",
+            "score": 59
+          },
+          {
+            "term": "cloud",
+            "score": 50
+          },
+          {
+            "term": "advisory",
+            "score": 73
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": false,
+            "count": 8
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 3
+          },
+          {
+            "feature": "Video",
+            "presence": false,
+            "count": 3
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 19
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 9
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Waterston India: Professional Services You Can Trust",
+            "serpMentions": 41,
+            "avgPosition": 4.8
+          },
+          {
+            "heading": "Core Services Offered by Waterston",
+            "serpMentions": 16,
+            "avgPosition": 14.0
+          },
+          {
+            "heading": "Industries We Serve",
+            "serpMentions": 39,
+            "avgPosition": 8.5
+          },
+          {
+            "heading": "Case Studies and Client Success Stories",
+            "serpMentions": 6,
+            "avgPosition": 3.7
+          },
+          {
+            "heading": "Technology and Data-Driven Insights",
+            "serpMentions": 23,
+            "avgPosition": 15.4
+          }
+        ]
+      }
+    },
+    {
+      "domain": "paakashala.com",
+      "ui": {
+        "query": "paakashala restaurant overview"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "Paakashala: Authentic South Indian Dining Experience"
+        },
+        {
+          "level": "H2",
+          "title": "The Story of Paakashala"
+        },
+        {
+          "level": "H2",
+          "title": "Signature Dishes and Specialties"
+        },
+        {
+          "level": "H3",
+          "title": "Breakfast, Meals, and Sweet Varieties"
+        },
+        {
+          "level": "H2",
+          "title": "Restaurant Locations and Ambience"
+        },
+        {
+          "level": "H2",
+          "title": "Hygiene, Quality, and Customer Care"
+        },
+        {
+          "level": "H2",
+          "title": "Catering and Event Services"
+        },
+        {
+          "level": "H3",
+          "title": "Online Ordering and Delivery Partnerships"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "vidyarthibhavan.in",
+            "authority": 70,
+            "estimatedTrafficK": 246,
+            "commonKeywords": 3662,
+            "sampleUrls": [
+              "https://vidyarthibhavan.in/sample-1",
+              "https://vidyarthibhavan.in/sample-2",
+              "https://vidyarthibhavan.in/sample-3"
+            ]
+          },
+          {
+            "domain": "mavalli-tiffin-rooms.com",
+            "authority": 45,
+            "estimatedTrafficK": 729,
+            "commonKeywords": 2223,
+            "sampleUrls": [
+              "https://mavalli-tiffin-rooms.com/sample-1",
+              "https://mavalli-tiffin-rooms.com/sample-2",
+              "https://mavalli-tiffin-rooms.com/sample-3"
+            ]
+          },
+          {
+            "domain": "ctrblr.com",
+            "authority": 67,
+            "estimatedTrafficK": 334,
+            "commonKeywords": 2904,
+            "sampleUrls": [
+              "https://ctrblr.com/sample-1",
+              "https://ctrblr.com/sample-2",
+              "https://ctrblr.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "Paakashala: Authentic South Indian Dining Experience",
+            "count": 15
+          },
+          {
+            "heading": "The Story of Paakashala",
+            "count": 9
+          },
+          {
+            "heading": "Signature Dishes and Specialties",
+            "count": 16
+          },
+          {
+            "heading": "Breakfast, Meals, and Sweet Varieties",
+            "count": 5
+          },
+          {
+            "heading": "Restaurant Locations and Ambience",
+            "count": 6
+          },
+          {
+            "heading": "Hygiene, Quality, and Customer Care",
+            "count": 12
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "dosa",
+            "score": 41
+          },
+          {
+            "term": "idli",
+            "score": 61
+          },
+          {
+            "term": "thali",
+            "score": 82
+          },
+          {
+            "term": "filter coffee",
+            "score": 85
+          },
+          {
+            "term": "hygiene",
+            "score": 50
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": false,
+            "count": 11
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 7
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 3
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 19
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 10
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "Paakashala: Authentic South Indian Dining Experience",
+            "serpMentions": 16,
+            "avgPosition": 14.2
+          },
+          {
+            "heading": "The Story of Paakashala",
+            "serpMentions": 52,
+            "avgPosition": 6.6
+          },
+          {
+            "heading": "Signature Dishes and Specialties",
+            "serpMentions": 22,
+            "avgPosition": 10.7
+          },
+          {
+            "heading": "Breakfast, Meals, and Sweet Varieties",
+            "serpMentions": 37,
+            "avgPosition": 4.5
+          },
+          {
+            "heading": "Restaurant Locations and Ambience",
+            "serpMentions": 8,
+            "avgPosition": 3.2
+          }
+        ]
+      }
+    },
+    {
+      "domain": "bigbasket.com",
+      "ui": {
+        "query": "bigbasket grocery shopping tips"
+      },
+      "headings": [
+        {
+          "level": "H1",
+          "title": "BigBasket Grocery Shopping Tips and Tricks"
+        },
+        {
+          "level": "H2",
+          "title": "How to Find Fresh Produce Online"
+        },
+        {
+          "level": "H2",
+          "title": "Saving with BigBasket Coupons and Wallet Offers"
+        },
+        {
+          "level": "H3",
+          "title": "Subscription Plans for Regular Deliveries"
+        },
+        {
+          "level": "H2",
+          "title": "Delivery Timings and Slot Management"
+        },
+        {
+          "level": "H2",
+          "title": "Handling Returns and Refunds for Groceries"
+        },
+        {
+          "level": "H2",
+          "title": "Exclusive Brands and Private Labels by BigBasket"
+        },
+        {
+          "level": "H3",
+          "title": "BB Royal, BB Combo, and Farm Fresh Categories"
+        }
+      ],
+      "competitorsTab": {
+        "domains": [
+          {
+            "domain": "grofers.com",
+            "authority": 94,
+            "estimatedTrafficK": 138,
+            "commonKeywords": 705,
+            "sampleUrls": [
+              "https://grofers.com/sample-1",
+              "https://grofers.com/sample-2",
+              "https://grofers.com/sample-3"
+            ]
+          },
+          {
+            "domain": "zeptonow.com",
+            "authority": 59,
+            "estimatedTrafficK": 778,
+            "commonKeywords": 2541,
+            "sampleUrls": [
+              "https://zeptonow.com/sample-1",
+              "https://zeptonow.com/sample-2",
+              "https://zeptonow.com/sample-3"
+            ]
+          },
+          {
+            "domain": "blinkit.com",
+            "authority": 49,
+            "estimatedTrafficK": 302,
+            "commonKeywords": 2663,
+            "sampleUrls": [
+              "https://blinkit.com/sample-1",
+              "https://blinkit.com/sample-2",
+              "https://blinkit.com/sample-3"
+            ]
+          }
+        ]
+      },
+      "heatmapsTab": {
+        "headingsFrequency": [
+          {
+            "heading": "BigBasket Grocery Shopping Tips and Tricks",
+            "count": 3
+          },
+          {
+            "heading": "How to Find Fresh Produce Online",
+            "count": 18
+          },
+          {
+            "heading": "Saving with BigBasket Coupons and Wallet Offers",
+            "count": 18
+          },
+          {
+            "heading": "Subscription Plans for Regular Deliveries",
+            "count": 5
+          },
+          {
+            "heading": "Delivery Timings and Slot Management",
+            "count": 12
+          },
+          {
+            "heading": "Handling Returns and Refunds for Groceries",
+            "count": 12
+          }
+        ],
+        "termHeat": [
+          {
+            "term": "fresh",
+            "score": 75
+          },
+          {
+            "term": "delivery slot",
+            "score": 96
+          },
+          {
+            "term": "coupon",
+            "score": 82
+          },
+          {
+            "term": "subscription",
+            "score": 55
+          },
+          {
+            "term": "private label",
+            "score": 80
+          }
+        ],
+        "serpFeatureCoverage": [
+          {
+            "feature": "FAQ",
+            "presence": true,
+            "count": 3
+          },
+          {
+            "feature": "HowTo",
+            "presence": true,
+            "count": 5
+          },
+          {
+            "feature": "Video",
+            "presence": true,
+            "count": 9
+          },
+          {
+            "feature": "Images",
+            "presence": true,
+            "count": 14
+          },
+          {
+            "feature": "Sitelinks",
+            "presence": true,
+            "count": 7
+          }
+        ],
+        "headingSerpMatrix": [
+          {
+            "heading": "BigBasket Grocery Shopping Tips and Tricks",
+            "serpMentions": 13,
+            "avgPosition": 9.5
+          },
+          {
+            "heading": "How to Find Fresh Produce Online",
+            "serpMentions": 56,
+            "avgPosition": 16.0
+          },
+          {
+            "heading": "Saving with BigBasket Coupons and Wallet Offers",
+            "serpMentions": 12,
+            "avgPosition": 13.8
+          },
+          {
+            "heading": "Subscription Plans for Regular Deliveries",
+            "serpMentions": 42,
+            "avgPosition": 6.9
+          },
+          {
+            "heading": "Delivery Timings and Slot Management",
+            "serpMentions": 9,
+            "avgPosition": 7.8
+          }
+        ]
+      }
+    }
+  ]
+}
