@@ -258,6 +258,7 @@ function mapRowToSchema(row) {
     },
 
     // SERP features
+
     serp: {
       coveragePercent: n(row["SERP_Feature_Coverage_Percent"], undefined),
       featuredSnippets: n(row["Featured_Snippets_Count"], undefined),
@@ -283,43 +284,439 @@ function mapRowToSchema(row) {
 export default function Dashboard({ onOpenContentEditor }) {
 
   const searchParams = useSearchParams();
-  const [domain, setDomain] = useState("example.com");
-  const [rows, setRows] = useState(null);        // raw array from /data/seo-data.json
-  const [dataError, setDataError] = useState("");
+  const [domain, setDomain] = useState(null);
+  // Live SEO data from /api/seo
+  const [seo, setSeo] = useState(null);
+  const [seoError, setSeoError] = useState("");
+  const [seoLoading, setSeoLoading] = useState(false);
 
   // Watch for query param AND storage
   useEffect(() => {
-    setDomain(getSiteFromStorageOrQuery(searchParams));
+    const site = getSiteFromStorageOrQuery(searchParams);
+    console.log("[Dashboard] Resolved domain from storage/query:", site);
+    setDomain(site);
   }, [searchParams]);
 
-  // Load JSON (array of rows)
+  // Fetch unified SEO data from /api/seo whenever domain changes
   useEffect(() => {
+    if (!domain || domain === "example.com") return;
+
     let alive = true;
     (async () => {
       try {
-        const res = await fetch("/data/seo-data.json", { cache: "no-store" });
-        if (!res.ok) throw new Error("Failed to load seo-data.json");
+        setSeoLoading(true);
+        setSeoError("");
+
+        const url = `https://${domain}`;
+        const keyword = domain; // TODO: wire actual keyword later from onboarding
+
+        const payload = {
+          url,
+          keyword,
+          countryCode: "in",
+          languageCode: "en",
+          depth: 10,
+          // you can trim this list to speed things up while developing:
+          providers: ["psi", "authority", "dataforseo", "content"],
+        };
+
+        console.log("[Dashboard] Calling /api/seo with payload:", payload);
+
+        const res = await fetch("/api/seo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to load /api/seo: ${res.status}`);
+        }
+
         const json = await res.json();
-        if (!Array.isArray(json)) throw new Error("seo-data.json must be an array of rows");
-        if (alive) setRows(json.map(mapRowToSchema).filter(Boolean));
+        console.log("[Dashboard] /api/seo raw response:", json);
+
+        if (alive) setSeo(json);
       } catch (e) {
-        console.error(e);
-        if (alive) setDataError("Couldn't load /data/seo-data.json (place it under public/data).");
+        console.error("[Dashboard] Error while fetching /api/seo:", e);
+        if (alive) setSeoError(e.message || "Failed to load /api/seo");
+      } finally {
+        if (alive) setSeoLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, []);
 
-  // Pick the selected row by domain (match ignoring www/protocol)
+    return () => {
+      alive = false;
+    };
+  }, [domain]);
+
+  // Map unified /api/seo response → the "selected" shape the UI expects
+  // Map unified /api/seo response → the "selected" shape the UI expects
   const selected = useMemo(() => {
-    if (!rows?.length) return null;
-    const key = normalizeDomain(domain);
-    return rows.find(r => r.domain === key) || rows.find(r => r.domain === `www.${key}`) || null;
-  }, [rows, domain]);
+    if (!seo) return null;
+
+    console.log("[Dashboard] Mapping seo → selected. Raw seo:", seo);
+
+    // Technical SEO: support new backend shape with separate mobile/desktop
+    const technicalContainer = seo.technicalSeo || {};
+    const technicalMobile =
+      technicalContainer.mobile ||
+      seo.technicalSeoMobile ||
+      {};
+    const technicalDesktop =
+      technicalContainer.desktop ||
+      seo.technicalSeoDesktop ||
+      {};
+
+    // Prefer CrUX field data (coreWebVitalsField) when available,
+    // with a safe fallback to lab data (coreWebVitals / coreWebVitalsLab).
+    const vitalsFieldRaw = technicalContainer.coreWebVitalsField || {};
+    const vitalsLabRaw =
+      technicalMobile.coreWebVitals ||
+      technicalDesktop.coreWebVitals ||
+      technicalContainer.coreWebVitals ||
+      technicalContainer.coreWebVitalsLab ||
+      {};
+
+    const vitals = {
+      lcp:
+        typeof vitalsFieldRaw?.lcp?.value === "number"
+          ? vitalsFieldRaw.lcp.value
+          : vitalsLabRaw.lcp,
+      tti:
+        typeof vitalsFieldRaw?.inp?.value === "number"
+          ? vitalsFieldRaw.inp.value
+          : vitalsLabRaw.tti,
+      cls:
+        typeof vitalsFieldRaw?.cls?.value === "number"
+          ? vitalsFieldRaw.cls.value
+          : vitalsLabRaw.cls,
+    };
+
+    const mobilePerf =
+      typeof technicalContainer.performanceScoreMobile === "number"
+        ? technicalContainer.performanceScoreMobile
+        : typeof technicalMobile.performanceScore === "number"
+        ? technicalMobile.performanceScore
+        : typeof technicalContainer.performanceScore === "number"
+        ? technicalContainer.performanceScore
+        : null;
+
+    const desktopPerf =
+      typeof technicalContainer.performanceScoreDesktop === "number"
+        ? technicalContainer.performanceScoreDesktop
+        : typeof technicalDesktop.performanceScore === "number"
+        ? technicalDesktop.performanceScore
+        : typeof technicalContainer.performanceScore === "number"
+        ? technicalContainer.performanceScore
+        : null;
+
+    const authority = seo.authority || {};
+    const serp = seo.serp || {};
+    const dataForSeo = seo.dataForSeo || {};
+    const backlinksSummary = dataForSeo.backlinksSummary || {};
+    const content = seo.content || {};
+    const serpFeaturesFromDataForSeo = dataForSeo.serpFeatures || {};
+    const serpFeaturesFromSerper = serp.serpFeatures || {};
+    const serpFeatures = Object.keys(serpFeaturesFromDataForSeo).length
+      ? serpFeaturesFromDataForSeo
+      : serpFeaturesFromSerper || {};
+
+    // ---- NEW: pull on-page opportunity rows from backend ----
+    const apiSeoRows =
+      (Array.isArray(seo.seoRows) && seo.seoRows.length
+        ? seo.seoRows
+        : null) ||
+      (Array.isArray(dataForSeo.seoRows) && dataForSeo.seoRows.length
+        ? dataForSeo.seoRows
+        : null);
+
+    // Derive SERP feature metrics, preferring DataForSEO if present
+    const serpPrimaryItems =
+      (dataForSeo?.serp &&
+        Array.isArray(dataForSeo.serp.results) &&
+        dataForSeo.serp.results) ||
+      (Array.isArray(dataForSeo?.serpResults) && dataForSeo.serpResults) ||
+      (Array.isArray(dataForSeo?.serpItems) && dataForSeo.serpItems) ||
+      [];
+
+    const serpFallbackItems =
+      Array.isArray(serp?.topResults) ? serp.topResults : [];
+
+    const serpItemsForFeatures =
+      serpPrimaryItems.length > 0 ? serpPrimaryItems : serpFallbackItems;
+
+    const serpItemsWithFeatures = serpItemsForFeatures.filter((item) => {
+      const f = item?.serp_features || item?.features;
+      return Array.isArray(f) && f.length > 0;
+    });
+
+    const serpCoverageFromApi =
+      serpItemsForFeatures.length > 0
+        ? Math.round(
+            (serpItemsWithFeatures.length / serpItemsForFeatures.length) * 100
+          )
+        : null;
+
+    const countByFeature = (featureName) =>
+      serpItemsForFeatures.filter((item) => {
+        const type = item?.type || item?.result_type;
+        const f = item?.serp_features || item?.features;
+        return (
+          type === featureName ||
+          (Array.isArray(f) && f.includes(featureName))
+        );
+      }).length || null;
+
+    const serpFeaturedSnippetsFromApi =
+      countByFeature("featured_snippet") ?? null;
+    const serpPeopleAlsoAskFromApi =
+      countByFeature("people_also_ask") ?? null;
+    const serpImagePackFromApi = countByFeature("image_pack") ?? null;
+    const serpVideoResultsFromApi = countByFeature("video") ?? null;
+    const serpKnowledgePanelFromApi =
+      countByFeature("knowledge_panel") ?? null;
+
+    const serpPeopleAlsoAskCount =
+      Array.isArray(serp?.peopleAlsoAsk) ? serp.peopleAlsoAsk.length : null;
+
+    const oprScore =
+      typeof authority.domainAuthority === "number"
+        ? authority.domainAuthority
+        : undefined;
+
+    const domainRatingFromOpenPageRank =
+      typeof oprScore === "number" ? oprScore * 10 : null;
+
+    const domainRatingFromDataForSeo =
+      typeof backlinksSummary?.rank === "number"
+        ? backlinksSummary.rank
+        : null;
+
+    const effectiveDomainRating =
+      domainRatingFromOpenPageRank ?? domainRatingFromDataForSeo ?? undefined;
+
+    const mapped = {
+      domain: seo._meta?.domain || domain,
+      dateAnalyzed: seo._meta?.generatedAt || "",
+
+      // Off-page
+      // Prefer OpenPageRank-derived DR, with fallback to DataForSEO rank (0–100)
+      domainRating: effectiveDomainRating,
+      industryAvgDR:
+        typeof effectiveDomainRating === "number"
+          ? Math.max(20, Math.min(80, effectiveDomainRating * 1.1))
+          : 45.2,
+      trustBar: 72,
+      medQuality: 20,
+      lowQuality: 8,
+      referringDomains:
+        typeof backlinksSummary.referring_domains === "number"
+          ? backlinksSummary.referring_domains
+          : undefined,
+      backlinks:
+        typeof backlinksSummary.backlinks === "number"
+          ? backlinksSummary.backlinks
+          : undefined,
+      dofollowPct:
+        typeof backlinksSummary.referring_pages === "number" &&
+        typeof backlinksSummary.referring_pages_nofollow === "number" &&
+        backlinksSummary.referring_pages > 0
+          ? Math.round(
+              ((backlinksSummary.referring_pages -
+                backlinksSummary.referring_pages_nofollow) /
+                backlinksSummary.referring_pages) *
+                100
+            )
+          : 78,
+      nofollowPct:
+        typeof backlinksSummary.referring_pages === "number" &&
+        typeof backlinksSummary.referring_pages_nofollow === "number" &&
+        backlinksSummary.referring_pages > 0
+          ? Math.max(
+              0,
+              100 -
+                Math.round(
+                  ((backlinksSummary.referring_pages -
+                    backlinksSummary.referring_pages_nofollow) /
+                    backlinksSummary.referring_pages) *
+                    100
+                )
+            )
+          : 22,
+
+      // Technical
+      siteHealth:
+        mobilePerf != null
+          ? Math.round(mobilePerf * 100)
+          : desktopPerf != null
+          ? Math.round(desktopPerf * 100)
+          : undefined,
+      pagesScanned:
+        typeof backlinksSummary.crawled_pages === "number"
+          ? backlinksSummary.crawled_pages
+          : 2100,
+      redirects: 89,
+      broken:
+        typeof backlinksSummary.broken_pages === "number"
+          ? backlinksSummary.broken_pages
+          : 15,
+      cwvScores: {
+        LCP_Score:
+          typeof vitals.lcp === "number" ? vitals.lcp / 1000 : undefined,
+        INP_Score:
+          typeof vitals.tti === "number" ? vitals.tti : undefined,
+        CLS_Score:
+          typeof vitals.cls === "number" ? vitals.cls : undefined,
+      },
+      pageSpeed: {
+        desktop:
+          desktopPerf != null
+            ? Math.round(desktopPerf * 100)
+            : mobilePerf != null
+            ? Math.round(mobilePerf * 100)
+            : undefined,
+        mobile:
+          mobilePerf != null
+            ? Math.round(mobilePerf * 100)
+            : desktopPerf != null
+            ? Math.round(desktopPerf * 100)
+            : undefined,
+      },
+
+      // Performance (still demo for now)
+      organicTraffic: {
+        monthly: 38600,
+        growth: 23,
+      },
+      organicKeywords: {
+        total: 90600,
+        top3: 12300,
+        top10: 24800,
+        top100: 53600,
+      },
+
+      // Leads (demo)
+      leads: {
+        monthly: 887,
+        goal: 1500,
+        contactForm: 560,
+        newsletter: 327,
+        growth: 12.3,
+      },
+
+      // AI SEO Matrix – prefers backend (seo.dataForSeo.aiTools) with safe fallbacks
+      aiTools: (() => {
+        const api = dataForSeo.aiTools || {};
+        const safeTool = (key, fallbackRating, fallbackPages, src) => {
+          const t = api[key] || {};
+          const rating = typeof t.rating === "number" ? t.rating : fallbackRating;
+          const pages = typeof t.pages === "number" ? t.pages : fallbackPages;
+          return { rating, pages, src };
+        };
+        return {
+          GPT:        safeTool("GPT",        4.7, 120, "/assets/gpt.svg"),
+          GoogleAI:   safeTool("GoogleAI",   4.4, 98,  "/assets/google.svg"),
+          Perplexity: safeTool("Perplexity", 4.6, 87,  "/assets/perplexity.svg"),
+          Copilot:    safeTool("Copilot",    4.3, 64,  "/assets/copilot.svg"),
+          Gemini:     safeTool("Gemini",     4.1, 52,  "/assets/gemini.svg"),
+        };
+      })(),
+
+      // SERP features (driven by Serper.dev via seo.serp.serpFeatures)
+      serp: {
+        coveragePercent:
+          typeof serpFeatures.coveragePercent === "number"
+            ? serpFeatures.coveragePercent
+            : 45,
+        featuredSnippets:
+          typeof serpFeatures.featuredSnippets === "number"
+            ? serpFeatures.featuredSnippets
+            : 23,
+        peopleAlsoAsk:
+          typeof serpFeatures.peopleAlsoAsk === "number"
+            ? serpFeatures.peopleAlsoAsk
+            : 156,
+        imagePack:
+          typeof serpFeatures.imagePack === "number"
+            ? serpFeatures.imagePack
+            : 89,
+        videoResults:
+          typeof serpFeatures.videoResults === "number"
+            ? serpFeatures.videoResults
+            : 34,
+        knowledgePanel:
+          typeof serpFeatures.knowledgePanel === "number"
+            ? serpFeatures.knowledgePanel
+            : 12,
+      },
+
+      // Issue counts (from backend seo.issues, with safe fallbacks)
+      issues: {
+        critical: seo.issues?.critical ?? 274,
+        warning: seo.issues?.warning ?? 883,
+        recommendations: seo.issues?.recommendations ?? 77,
+        contentOpps: seo.issues?.contentOpps ?? 5,
+      },
+
+      // Growth percentages for issues (from backend seo.issuesGrowth if present)
+      issuesGrowth: {
+        critical: seo.issuesGrowth?.critical,
+        warning: seo.issuesGrowth?.warning,
+        recommendations: seo.issuesGrowth?.recommendations,
+        contentOpps: seo.issuesGrowth?.contentOpps,
+      },
+
+      // NEW: on-page table rows from backend
+      seoRows: apiSeoRows || [],
+
+      // On-page content cards (blogs/pages) from backend content analysis
+      content: {
+        blog: content.blog || [],
+        pages: content.pages || [],
+      },
+    };
+
+    console.log("[SERP DEBUG] Final SERP counts:", mapped.serp);
+    console.log(
+      "[Dashboard] Mapped selected metrics (api vs placeholders):",
+      mapped
+    );
+    return mapped;
+  }, [seo, domain]);
+
+
+  // Flags to see what is API vs fallback for key metrics (logged once per load)
+  const metricSources = useMemo(() => {
+    if (!selected) return null;
+    return {
+      domainRatingFromApi: selected.domainRating != null,
+      siteHealthFromApi: selected.siteHealth != null,
+      pageSpeedDesktopFromApi: selected.pageSpeed?.desktop != null,
+      cwvFromApi:
+        selected.cwvScores?.LCP_Score != null ||
+        selected.cwvScores?.INP_Score != null ||
+        selected.cwvScores?.CLS_Score != null,
+      referringDomainsFromApi: selected.referringDomains != null,
+      serpFeatureCountsFromApi:
+        selected.serp?.featuredSnippets !== 23 ||
+        selected.serp?.peopleAlsoAsk !== 156,
+      organicTrafficIsPlaceholder: true,
+      organicKeywordsIsPlaceholder: true,
+      leadsIsPlaceholder: true,
+    };
+  }, [selected]);
+
+  useEffect(() => {
+    if (!seo || !metricSources) return;
+    console.log(
+      "[Dashboard] Metric source flags (true = API, false = fallback/demo):",
+      metricSources
+    );
+  }, [seo, metricSources]);
 
   // ====== Values (with graceful fallbacks to your current hardcoded demo numbers) ======
-  const DR_TARGET = selected?.domainRating ?? 53.6;
-  const DR_BAR    = selected?.trustBar ?? 72;
+  const DR_TARGET = selected?.domainRating ?? 53.6; // 0–100 scale now
+  const INDUSTRY_AVG = selected?.industryAvgDR ?? 45.2;
 
   const RD_TARGET = selected?.referringDomains ?? 63400;
   // Normalize High/Medium/Low quality percentages so they always sum to 100
@@ -381,7 +778,7 @@ const MASTER_MS = 1000;                 // single duration for everything
 const [prog, setProg] = useState(0);    // 0 → 1 (eased)
 
 useEffect(() => {
-  if (!rows) return;                    // gate on data to avoid "second wave"
+  if (!seo) return;                     // gate on data to avoid "second wave"
   let raf;
   const start = performance.now();
   const tick = (now) => {
@@ -393,11 +790,22 @@ useEffect(() => {
   };
   raf = requestAnimationFrame(tick);
   return () => cancelAnimationFrame(raf);
-}, [rows]);
+}, [seo]);
 
 // ---- Derived animated values (no per-widget RAFs) ----
 const drValue = Math.max(0, DR_TARGET * prog);
-const drWidth = Math.max(0, DR_BAR * prog);
+const drTrustWidth = Math.max(0, Math.min(100, drValue));
+const drDiffPct = INDUSTRY_AVG
+  ? ((DR_TARGET - INDUSTRY_AVG) / INDUSTRY_AVG) * 100
+  : 0;
+const drTrendUp = drDiffPct >= 0;
+const drTrendText = `${drTrendUp ? "↗︎" : "↘︎"} ${Math.abs(drDiffPct).toFixed(
+  1
+)}%`;
+
+let drBadgeLabel = "Average";
+if (DR_TARGET >= INDUSTRY_AVG * 1.2) drBadgeLabel = "Above Average";
+else if (DR_TARGET <= INDUSTRY_AVG * 0.8) drBadgeLabel = "Below Average";
 
 const rdValue = Math.max(0, RD_TARGET * prog);
 const rdP = Math.max(0, prog);  // reuse for quality bars
@@ -633,7 +1041,7 @@ const seoTableProg = Math.max(0, prog);
                 </span>
               </div>
               <span className="rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[11px] font-medium text-[#178A5D]">
-                Above Average
+                {drBadgeLabel}
               </span>
             </div>
 
@@ -642,20 +1050,27 @@ const seoTableProg = Math.max(0, prog);
                 {drValue.toFixed(1)}
               </div>
               <div className="pb-1 text-[13px] text-[var(--muted)]">/ 100</div>
-              <div className="ml-auto text-[12px] font-medium text-[#1BA97A]">
-                ↗︎ +8.4%
+              <div
+                className={`ml-auto text-[12px] font-medium ${
+                  drTrendUp ? "text-[#1BA97A]" : "text-[#EF4444]"
+                }`}
+              >
+                {drTrendText}
               </div>
             </div>
 
             <div className="mt-3 text-[11px] text-[var(--muted)]">
-              Industry Avg: <span className="font-medium text-[var(--muted)]">{selected?.industryAvgDR ?? 45.2}</span>
+              Industry Avg:{" "}
+              <span className="font-medium text-[var(--muted)]">
+                {INDUSTRY_AVG.toFixed(1)}
+              </span>
             </div>
 
             <div className="mt-3 text-[12px] text-[var(--muted)]">Trust score</div>
             <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--border)]">
               <div
                 className="h-2 rounded-full bg-[#1CC88A]"
-                style={{ width: `${drWidth}%` }}
+                style={{ width: `${drTrustWidth}%` }}
               />
             </div>
           </div> 
@@ -831,65 +1246,235 @@ const seoTableProg = Math.max(0, prog);
 
           {/* Core Web Vitals */}
           <div className="rounded-[14px] border border-[var(--border)] bg-[var(--input)] p-4 shadow-sm">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[#FFE1EA] bg-[#FFF0F4] text-[#D12C2C]">
-                  <Gauge size={16} />
-                </span>
-                <span className="flex items-center gap-1 text-[13px] text-gray-700 leading-relaxed">
-                  Core web vitals
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[11px] font-medium text-[#178A5D]">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#22C55E]" />
-                  All Good
-                </span>
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] text-[var(--muted)]">
-                  <RefreshCw size={14} />
-                </span>
-              </div>
-            </div>
+            {(() => {
+              // Google CWV thresholds
+              const classify = (value, goodLimit, niLimit, invert = false) => {
+                if (value == null || !Number.isFinite(value)) return "unknown";
+                const v = Number(value);
+                if (!invert) {
+                  if (v <= goodLimit) return "good";
+                  if (v <= niLimit) return "ni";
+                  return "poor";
+                }
+                // For metrics where lower is worse (none here currently)
+                if (v >= goodLimit) return "good";
+                if (v >= niLimit) return "ni";
+                return "poor";
+              };
 
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] p-4 text-center">
-                <div className="mb-2 flex items-center justify-center gap-2 text-[12px] text-[var(--muted)]">
-                  <Clock3 size={14} />
-                  <span className="font-medium text-[var(--text)]">LCP</span>
-                  <span className="ml-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[10px] font-medium text-[#178A5D]">Good</span>
-                </div>
-                <div className="text-[22px] font-semibold leading-none text-[var(--text)] tabular-nums">{lcp.toFixed(1)}s</div>
-                <div className="mt-1 text-[11px] text-[var(--muted)]">&lt; 2.5s</div>
-              </div>
+              const lcpLevel = classify(lcp, 2.5, 4.0); // seconds
+              const inpLevel = classify(inp, 200, 500); // ms
+              const clsLevel = classify(cls, 0.1, 0.25); // unitless
 
-              <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] p-4 text-center">
-                <div className="mb-2 flex items-center justify-center gap-2 text-[12px] text-[var(--muted)]">
-                  <ActivitySquare size={14} />
-                  <span className="font-medium text-[var(--text)]">INP</span>
-                  <span className="ml-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[10px] font-medium text-[#178A5D]">Good</span>
-                </div>
-                <div className="text-[22px] font-semibold leading-none text-[var(--text)] tabular-nums">{Math.round(inp)}ms</div>
-                <div className="mt-1 text-[11px] text-[var(--muted)]">&lt; 200ms</div>
-              </div>
+              const overallLevel = (() => {
+                if ([lcpLevel, inpLevel, clsLevel].includes("poor")) return "poor";
+                if ([lcpLevel, inpLevel, clsLevel].includes("ni")) return "ni";
+                if ([lcpLevel, inpLevel, clsLevel].includes("good")) return "good";
+                return "unknown";
+              })();
 
-              <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] p-4 text-center">
-                <div className="mb-2 flex items-center justify-center gap-2 text-[12px] text-[var(--muted)]">
-                  <Lock size={14} />
-                  <span className="font-medium text-[var(--text)]">CLS</span>
-                  <span className="ml-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[10px] font-medium text-[#178A5D]">Good</span>
-                </div>
-                <div className="text-[22px] font-semibold leading-none text-[var(--text)] tabular-nums">{cls.toFixed(2)}</div>
-                <div className="mt-1 text-[11px] text-[var(--muted)]">&lt; 0.1</div>
-              </div>
-            </div>
+              const STATUS_STYLES = {
+                good: {
+                  label: "Good",
+                  badgeBg: "#EAF8F1",
+                  badgeBorder: "#BEE7D6",
+                  badgeText: "#178A5D",
+                  dot: "#22C55E",
+                },
+                ni: {
+                  label: "Average",
+                  badgeBg: "#FFF5D9",
+                  badgeBorder: "#FDE7B8",
+                  badgeText: "#B98500",
+                  dot: "#F59E0B",
+                },
+                poor: {
+                  label: "Poor",
+                  badgeBg: "#FFF0F4",
+                  badgeBorder: "#FFE1EA",
+                  badgeText: "#D12C2C",
+                  dot: "#EF4444",
+                },
+                unknown: {
+                  label: "Unknown",
+                  badgeBg: "#E5E7EB",
+                  badgeBorder: "#D1D5DB",
+                  badgeText: "#4B5563",
+                  dot: "#9CA3AF",
+                },
+              };
 
-            <div className="mt-3 flex items-center justify-center gap-1 text-[11px] text-[var(--muted)]">
-              <span className="text-[#C5CBD6]">•</span> Data from{" "}
-              <span className="font-semibold text-[var(--text)]">Page Speed Insights</span>
-            </div>
+              const overallStyles = (() => {
+                if (overallLevel === "good") {
+                  return {
+                    label: "All Good",
+                    bg: "#EAF8F1",
+                    border: "#BEE7D6",
+                    text: "#178A5D",
+                  };
+                }
+                if (overallLevel === "ni") {
+                  return {
+                    label: "Needs attention",
+                    bg: "#FFF5D9",
+                    border: "#FDE7B8",
+                    text: "#B98500",
+                  };
+                }
+                if (overallLevel === "poor") {
+                  return {
+                    label: "Issues detected",
+                    bg: "#FFF0F4",
+                    border: "#FFE1EA",
+                    text: "#D12C2C",
+                  };
+                }
+                return {
+                  label: "No data",
+                  bg: "#E5E7EB",
+                  border: "#D1D5DB",
+                  text: "#4B5563",
+                };
+              })();
+
+              const lcpStyles = STATUS_STYLES[lcpLevel] || STATUS_STYLES.unknown;
+              const inpStyles = STATUS_STYLES[inpLevel] || STATUS_STYLES.unknown;
+              const clsStyles = STATUS_STYLES[clsLevel] || STATUS_STYLES.unknown;
+
+              const formatSeconds = (value) => {
+                if (value == null || !Number.isFinite(value)) return "—";
+                const v = Number(value);
+                if (v < 1) return v.toFixed(2) + "s";
+                if (v < 10) return v.toFixed(1) + "s";
+                return v.toFixed(1) + "s";
+              };
+
+              const formatMs = (value) => {
+                if (value == null || !Number.isFinite(value)) return "—";
+                const v = Number(value);
+                if (v >= 1000) return (v / 1000).toFixed(1) + "s";
+                return Math.round(v) + "ms";
+              };
+
+              const lcpThresholdText = "< 2.5s";
+              const inpThresholdText = "< 200ms";
+              const clsThresholdText = "< 0.1";
+
+              return (
+                <>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--input)] text-[var(--muted)]">
+                        <ActivitySquare size={16} />
+                      </span>
+                      <span className="text-[13px] text-gray-700 leading-relaxed">
+                        Core web vitals
+                      </span>
+                    </div>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                      style={{
+                        backgroundColor: overallStyles.bg,
+                        border: `1px solid ${overallStyles.border}`,
+                        color: overallStyles.text,
+                      }}
+                    >
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: STATUS_STYLES[overallLevel]?.dot || "#9CA3AF" }}
+                      />
+                      {overallStyles.label}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {/* LCP */}
+                    <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] px-3 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-medium text-[var(--muted)]">LCP</div>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{
+                            backgroundColor: lcpStyles.badgeBg,
+                            border: `1px solid ${lcpStyles.badgeBorder}`,
+                            color: lcpStyles.badgeText,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: lcpStyles.dot }}
+                          />
+                          {lcpStyles.label}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[24px] font-semibold leading-none text-[var(--text)] tabular-nums">
+                        {formatSeconds(lcp)}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--muted)]">{lcpThresholdText}</div>
+                    </div>
+
+                    {/* INP */}
+                    <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] px-3 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-medium text-[var(--muted)]">INP</div>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{
+                            backgroundColor: inpStyles.badgeBg,
+                            border: `1px solid ${inpStyles.badgeBorder}`,
+                            color: inpStyles.badgeText,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: inpStyles.dot }}
+                          />
+                          {inpStyles.label}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[24px] font-semibold leading-none text-[var(--text)] tabular-nums">
+                        {formatMs(inp)}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--muted)]">{inpThresholdText}</div>
+                    </div>
+
+                    {/* CLS */}
+                    <div className="rounded-[12px] border border-[var(--border)] bg-[var(--input)] px-3 py-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-medium text-[var(--muted)]">CLS</div>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{
+                            backgroundColor: clsStyles.badgeBg,
+                            border: `1px solid ${clsStyles.badgeBorder}`,
+                            color: clsStyles.badgeText,
+                          }}
+                        >
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full"
+                            style={{ backgroundColor: clsStyles.dot }}
+                          />
+                          {clsStyles.label}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[24px] font-semibold leading-none text-[var(--text)] tabular-nums">
+                        {cls?.toFixed ? cls.toFixed(2) : (Number(cls) || 0).toFixed(2)}
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--muted)]">{clsThresholdText}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-center gap-1 text-[11px] text-[var(--muted)]">
+                    <span className="text-[#C5CBD6]">•</span> Data from{" "}
+                    <span className="font-semibold text-[var(--text)]">Page Speed Insights</span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
-          {/* Page Speed Scores */}
+          
+{/* Page Speed Scores */}
           <div className="rounded-[14px] border border-[var(--border)] bg-[var(--input)] p-4 shadow-sm">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-2">
@@ -1339,9 +1924,13 @@ const seoTableProg = Math.max(0, prog);
                 <div className="mt-0.5 text-[20px] font-extrabold leading-none text-[var(--text)] tabular-nums">
                   {oppCounts[0]}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
-                  32% more since last month
-                </div>
+                {typeof selected?.issuesGrowth?.critical === "number" && (
+                  <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
+                    {selected.issuesGrowth.critical > 0
+                      ? `${selected.issuesGrowth.critical}% more since last month`
+                      : `${Math.abs(selected.issuesGrowth.critical)}% less since last month`}
+                  </div>
+                )}
               </div>
             </div>
             <button className="ml-4 inline-flex items-center gap-1 text-[11px] font-medium text-[#8D96A8] shrink-0 whitespace-nowrap">
@@ -1360,9 +1949,13 @@ const seoTableProg = Math.max(0, prog);
                 <div className="mt-0.5 text-[20px] font-extrabold leading-none text-[var(--text)] tabular-nums">
                   {oppCounts[1]}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
-                  32% more since last month
-                </div>
+                {typeof selected?.issuesGrowth?.critical === "number" && (
+                  <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
+                    {selected.issuesGrowth.critical > 0
+                      ? `${selected.issuesGrowth.critical}% more since last month`
+                      : `${Math.abs(selected.issuesGrowth.critical)}% less since last month`}
+                  </div>
+                )}
               </div>
             </div>
             <button className="ml-4 inline-flex items-center gap-1 text-[11px] font-medium text-[#8D96A8] shrink-0 whitespace-nowrap">
@@ -1381,9 +1974,13 @@ const seoTableProg = Math.max(0, prog);
                 <div className="mt-0.5 text-[20px] font-extrabold leading-none text-[var(--text)] tabular-nums">
                   {oppCounts[2]}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#16A34A] whitespace-nowrap">
-                  +23%<span className="text-[var(--muted)]">{' '}since last month</span>
-                </div>
+                {typeof selected?.issuesGrowth?.recommendations === "number" && (
+                  <div className="mt-1 text-[11px] font-medium text-[#16A34A] whitespace-nowrap">
+                    {selected.issuesGrowth.recommendations > 0
+                      ? `${selected.issuesGrowth.recommendations}% more since last month`
+                      : `${Math.abs(selected.issuesGrowth.recommendations)}% less since last month`}
+                  </div>
+                )}
               </div>
             </div>
             <button className="ml-4 inline-flex items-center gap-1 text-[11px] font-medium text-[#8D96A8] shrink-0 whitespace-nowrap">
@@ -1402,9 +1999,13 @@ const seoTableProg = Math.max(0, prog);
                 <div className="mt-0.5 text-[20px] font-extrabold leading-none text-[var(--text)] tabular-nums">
                   {oppCounts[3]}
                 </div>
-                <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
-                  -32%<span className="text-[var(--muted)]">{' '}since last month</span>
-                </div>
+                {typeof selected?.issuesGrowth?.contentOpps === "number" && (
+                  <div className="mt-1 text-[11px] font-medium text-[#DC2626] whitespace-nowrap">
+                    {selected.issuesGrowth.contentOpps > 0
+                      ? `${selected.issuesGrowth.contentOpps}% more since last month`
+                      : `${Math.abs(selected.issuesGrowth.contentOpps)}% less since last month`}
+                  </div>
+                )}
               </div>
             </div>
             <button className="ml-4 inline-flex items-center gap-1 text-[11px] font-medium text-[#8D96A8] shrink-0 whitespace-nowrap">

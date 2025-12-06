@@ -123,7 +123,6 @@ export default function NewOnPageSEOTable({ rows, progress = 1 }) {
   const dataLen = data.length;
   useEffect(() => {
     setActiveMap((prev) => {
-      // Build a new map sized to dataLen.
       const next = Array.from({ length: dataLen }, (_, i) =>
         prev[i] ?? { blog: Math.random() < 0.45, page: Math.random() < 0.45 }
       );
@@ -154,7 +153,8 @@ export default function NewOnPageSEOTable({ rows, progress = 1 }) {
 
       <div className="overflow-hidden rounded-[18px] border border-[var(--border)] bg-[var(--input)] shadow-sm">
         {/* Header */}
-        <div className="hidden md:grid grid-cols-[2.1fr_1.4fr_1.2fr_1.5fr_1.3fr_1fr_1fr_1.8fr] px-4 py-3 text-[12px] font-semibold text-[var(--muted)] text-center bg-[var(--input)]">
+        {/* 👇 Keywords column reduced (1.4fr) and Suggested topic widened (1.9fr) */}
+        <div className="hidden md:grid grid-cols-[1.4fr_1.3fr_1.1fr_1.3fr_1.9fr_1fr_1fr_1.4fr] px-4 py-3 text-[12px] font-semibold text-[var(--muted)] text-center bg-[var(--input)]">
           <div className="text-left">Keywords</div>
           <div>Type <span className="opacity-50">↑↓</span></div>
           <div>Search Volume</div>
@@ -171,13 +171,16 @@ export default function NewOnPageSEOTable({ rows, progress = 1 }) {
             {data.map((row, i) => (
               <li
                 key={i}
-                className="grid grid-cols-1 md:grid-cols-[2.1fr_1.4fr_1.2fr_1.5fr_1.3fr_1fr_1fr_1.8fr] items-center gap-3 px-4 py-3 text-[13px] text-center"
+                className="grid grid-cols-1 md:grid-cols-[1.4fr_1.3fr_1.1fr_1.3fr_1.9fr_1fr_1fr_1.4fr] items-center gap-3 px-4 py-3 text-[13px] text-center"
               >
-                <div className="flex items-center gap-2 justify-start text-[var(--text)]">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--input)] text-[var(--muted)]">
+                {/* KEYWORD CELL – now lets grid control width, wraps to next line */}
+                <div className="flex items-start gap-2 justify-start text-[var(--text)]">
+                  <span className="mt-[2px] inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--input)] text-[var(--muted)]">
                     <Wifi size={14} />
                   </span>
-                  <span className="truncate">{row.keyword}</span>
+                  <span className="min-w-0 whitespace-normal break-words leading-snug text-left">
+                    {row.keyword}
+                  </span>
                 </div>
 
                 <div>
@@ -186,14 +189,16 @@ export default function NewOnPageSEOTable({ rows, progress = 1 }) {
                   </span>
                 </div>
 
-                <div className="tabular-nums text-[var(--text)]">{Number(row.volume).toLocaleString()}</div>
+                <div className="tabular-nums text-[var(--text)]">
+                  {Number(row.volume).toLocaleString()}
+                </div>
 
                 <div className="flex items-center gap-2 justify-start text-[var(--text)]">
                   <span className="tabular-nums">{row.difficulty}%</span>
                   <DifficultyBar value={row.difficulty} progress={progress} />
                 </div>
 
-                <div className="truncate text-left md:text-center text-[var(--text)]">
+                <div className="text-left md:text-center text-[var(--text)] whitespace-normal break-words leading-snug min-w-0">
                   {row.suggested ?? "—"}
                 </div>
 
