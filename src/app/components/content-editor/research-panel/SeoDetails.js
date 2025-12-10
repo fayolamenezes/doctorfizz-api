@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
 import {
   Monitor,
   Smartphone,
@@ -18,10 +23,10 @@ import {
 } from "lucide-react";
 
 /**
- * RankMath-inspired SEO panel (JS version)
+ * RankMath-inspired SEO panel (API-wired version)
  */
 
-const PANEL_HEIGHT = 700; // <- fixed internal scroll height (px). Change as needed.
+const PANEL_HEIGHT = 700; // fixed internal scroll height (px)
 
 const SUGGESTED_KEYWORDS = [
   "blogging",
@@ -36,18 +41,34 @@ const SUGGESTED_KEYWORDS = [
   "beginners",
 ];
 
-const avgPxPerChar = (font) => (font === "title" ? 9.5 : font === "desc" ? 6.5 : 8);
+const avgPxPerChar = (font) =>
+  font === "title" ? 9.5 : font === "desc" ? 6.5 : 8;
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
 function titleCase(input) {
-  return input
+  return (input || "")
     .toLowerCase()
     .split(/\s+/)
     .map((w, i) =>
-      ["a", "an", "the", "and", "or", "but", "for", "nor", "to", "of", "in", "on", "at", "by"].includes(w) && i !== 0
+      [
+        "a",
+        "an",
+        "the",
+        "and",
+        "or",
+        "but",
+        "for",
+        "nor",
+        "to",
+        "of",
+        "in",
+        "on",
+        "at",
+        "by",
+      ].includes(w) && i !== 0
         ? w
         : w.charAt(0).toUpperCase() + w.slice(1)
     )
@@ -82,10 +103,17 @@ function meterState(val, goodMin, goodMax) {
 function Bar({ value, max, state }) {
   const pct = clamp((value / max) * 100, 0, 100);
   const color =
-    state === "good" ? "bg-emerald-500" : state === "warn" ? "bg-amber-500" : "bg-rose-500";
+    state === "good"
+      ? "bg-emerald-500"
+      : state === "warn"
+      ? "bg-amber-500"
+      : "bg-rose-500";
   return (
     <div className="h-1.5 w-full rounded-full bg-gray-200">
-      <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      <div
+        className={`h-1.5 rounded-full ${color}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }
@@ -94,7 +122,9 @@ function FieldHeader({ label, right, meta }) {
   return (
     <div className="mb-2 flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <span className="text-[13px] font-semibold text-gray-900">{label}</span>
+        <span className="text-[13px] font-semibold text-gray-900">
+          {label}
+        </span>
         {meta}
       </div>
       {right}
@@ -127,13 +157,220 @@ function useUndoable(initial) {
   return { value, set, undo, prev };
 }
 
-export default function SeoDetails() {
-  // --- State
+/* ============================
+   Helpers to read seoData
+============================ */
+
+function getDomainFromUrl(url) {
+  if (!url) return "";
+  try {
+    const hasProto = /^https?:\/\//i.test(url);
+    const u = new URL(hasProto ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return String(url).replace(/^www\./i, "").toLowerCase();
+  }
+}
+
+function splitUrl(url) {
+  if (!url) {
+    return {
+      domain: "https://demo.rankmath.com",
+      path: "/best-blogging-platform/",
+    };
+  }
+  try {
+    const u = new URL(url);
+    const domain = `${u.protocol}//${u.hostname}`;
+    const path = u.pathname || "/";
+    return { domain, path };
+  } catch {
+    // fallback: treat as domain string
+    const d = getDomainFromUrl(url);
+    return {
+      domain: `https://${d || "demo.rankmath.com"}`,
+      path: "/",
+    };
+  }
+}
+
+function deriveInitialFromSeo(seoData) {
+  const meta = seoData?._meta || {};
+  const serp = seoData?.serp || {};
+  const dfs = seoData?.dataForSeo || {};
+
+  const primaryResult =
+    serp.topResults?.[0] ||
+    serp.organic?.[0] ||
+    dfs.serpItems?.[0] ||
+    null;
+
+  const keyword = meta.keyword || dfs.keyword || dfs.primaryKeyword || "";
+
+  // Domain + path
+  const { domain, path } = splitUrl(meta.url || "");
+
+  // Title
+  const titleCandidate =
+    primaryResult?.title ||
+    dfs.pageTitle ||
+    dfs.metaTitle ||
+    (keyword
+      ? `${titleCase(keyword)} — Complete Guide`
+      : "How to Choose the Best Blogging Platform in 2025");
+
+  // Description
+  const descCandidate =
+    primaryResult?.snippet ||
+    primaryResult?.description ||
+    dfs.metaDescription ||
+    dfs.description ||
+    "Check out the best blogging platforms for 2025 with their detailed features — WordPress, Drupal, Wix, Squarespace, Blogger, Ghost and more.";
+
+  // Permalink text (we store a human-ish slug phrase)
+  let permalinkText = "";
+  if (path && path !== "/") {
+    // use path without leading/trailing slash
+    permalinkText = path.replace(/^\/|\/$/g, "");
+  }
+  if (!permalinkText) {
+    permalinkText = slugify(titleCandidate);
+  }
+
+  // Keywords
+  const kwSet = new Set();
+
+  if (keyword) kwSet.add(titleCase(keyword));
+
+  if (Array.isArray(dfs.topKeywords)) {
+    dfs.topKeywords.slice(0, 6).forEach((k) => {
+      const base =
+        k.primaryKeyword || k.keyword || k.term || k.key || "";
+      if (!base) return;
+      kwSet.add(titleCase(base));
+    });
+  }
+
+  // fallback from title words
+  if (!kwSet.size && titleCandidate) {
+    titleCandidate
+      .split(/\W+/)
+      .filter((w) => w.length > 3 && isNaN(Number(w)))
+      .slice(0, 5)
+      .forEach((w) => kwSet.add(titleCase(w)));
+  }
+
+  const keywords =
+    kwSet.size > 0
+      ? Array.from(kwSet)
+      : ["Blogging", "Platform", "Best"];
+
+  return {
+    domain,
+    path,
+    title: titleCandidate,
+    description: descCandidate,
+    permalink: permalinkText,
+    keywords,
+  };
+}
+
+// 🔧 UPDATED: safe normalization of Core Web Vitals so we never return raw objects
+function extractCoreWebVitals(technical) {
+  if (!technical) return {};
+
+  const lab = technical.coreWebVitals || technical.coreWebVitalsLab || {};
+  const field =
+    technical.coreWebVitalsField ||
+    technical.coreWebVitalsCrux ||
+    {};
+
+  const normalizeMetric = (input) => {
+    if (input == null) return null;
+
+    // Already numeric
+    if (typeof input === "number") return input;
+
+    // String that might be numeric
+    if (typeof input === "string") {
+      const num = parseFloat(input);
+      return Number.isFinite(num) ? num : input;
+    }
+
+    // Common PSI / CrUX shapes: { p75 }, { value, category }, { numericValue }
+    if (typeof input === "object") {
+      if (typeof input.p75 === "number") return input.p75;
+      if (typeof input.value === "number") return input.value;
+      if (typeof input.numericValue === "number") return input.numericValue;
+
+      // Last resort: try to coerce "value" even if it's a string
+      if (input.value != null) {
+        const num = parseFloat(input.value);
+        if (Number.isFinite(num)) return num;
+        return String(input.value);
+      }
+    }
+
+    // Fallback: stringify (so React can render it)
+    return String(input);
+  };
+
+  const lcpRaw =
+    field.LCP ??
+    field.lcp ??
+    lab.LCP ??
+    lab.lcp ??
+    null;
+
+  const clsRaw =
+    field.CLS ??
+    field.cls ??
+    lab.CLS ??
+    lab.cls ??
+    null;
+
+  const lcp = normalizeMetric(lcpRaw);
+  const cls = normalizeMetric(clsRaw);
+
+  return { lcp, cls };
+}
+
+function extractPerformanceScore(technical) {
+  if (!technical) return null;
+  const mobile = technical.performanceScoreMobile;
+  const desktop = technical.performanceScoreDesktop;
+  const generic = technical.performanceScore;
+
+  if (typeof generic === "number") return generic;
+  if (typeof mobile === "number" && typeof desktop === "number") {
+    return Math.round((mobile + desktop) / 2);
+  }
+  if (typeof mobile === "number") return mobile;
+  if (typeof desktop === "number") return desktop;
+  return null;
+}
+
+/* ============================
+   Component
+============================ */
+
+export default function SeoDetails({
+  // props from CE.ResearchPanel wired to /api/seo
+  seoData,
+  seoLoading,
+  seoError,
+}) {
+  // device preview
   const [device, setDevice] = useState("desktop");
-  const [domain] = useState("https://demo.rankmath.com");
+
+  // domain + path (preview)
+  const [domain, setDomain] = useState("https://demo.rankmath.com");
   const [path, setPath] = useState("/best-blogging-platform/");
 
-  const title = useUndoable("How to Choose the Best Blogging Platform in 2025");
+  // main fields (undoable)
+  const title = useUndoable(
+    "How to Choose the Best Blogging Platform in 2025"
+  );
   const description = useUndoable(
     "Check out the best blogging platforms for 2025 with their detailed features — WordPress, Drupal, Wix, Squarespace, Blogger, Ghost and more."
   );
@@ -141,18 +378,51 @@ export default function SeoDetails() {
     "A journal of curious thoughts, quiet travels, and unexpected discoveries."
   );
 
-  const [keywords, setKeywords] = useState(["Blogging", "Platform", "Best"]);
+  const [keywords, setKeywords] = useState([
+    "Blogging",
+    "Platform",
+    "Best",
+  ]);
   const [kwDraft, setKwDraft] = useState("");
 
   const [pillar, setPillar] = useState(false);
   const primaryKeyword = keywords[0] || "";
+
+  // live SEO slices
+  const technical = seoData?.technicalSeo || null;
+  const authority = seoData?.authority || null;
+
+  const performanceScore = extractPerformanceScore(technical);
+  const { lcp, cls } = extractCoreWebVitals(technical);
+
+  // only initialize once from seoData
+  const [initializedFromSeo, setInitializedFromSeo] = useState(false);
+
+  useEffect(() => {
+    if (!seoData || seoLoading || initializedFromSeo) return;
+    const init = deriveInitialFromSeo(seoData);
+
+    setDomain(init.domain);
+    setPath(init.path || "/");
+
+    title.set(init.title);
+    description.set(init.description);
+    permalink.set(init.permalink);
+    setKeywords(init.keywords);
+
+    setInitializedFromSeo(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seoData, seoLoading, initializedFromSeo]);
 
   // --- Meters
   const titleChars = title.value.length;
   const titlePx = pxEstimate(title.value, "title");
   const titleState = meterState(titleChars, 45, 60);
 
-  const slug = useMemo(() => slugify(permalink.value || title.value), [permalink.value, title.value]);
+  const slug = useMemo(
+    () => slugify(permalink.value || title.value),
+    [permalink.value, title.value]
+  );
   const slugPx = pxEstimate(slug, "slug");
   const slugState = meterState(slug.length, 20, 75);
 
@@ -166,20 +436,24 @@ export default function SeoDetails() {
       await navigator.clipboard.writeText(text);
       alert("Copied!");
     } catch {
+      // Fallback: just show the text
       alert(text);
     }
   };
 
-  // stable for ESLint deps
   const includePrimaryIn = useCallback(
-    (s) => primaryKeyword && !new RegExp(`\\b${primaryKeyword}\\b`, "i").test(s || ""),
+    (s) =>
+      primaryKeyword &&
+      !new RegExp(`\\b${primaryKeyword}\\b`, "i").test(s || ""),
     [primaryKeyword]
   );
 
   // --- Generators (local heuristics)
   const generateTitle = () => {
     const base = titleCase(
-      `${primaryKeyword || "Blogging"} Platforms Compared: ${new Date().getFullYear()} Guide`
+      `${primaryKeyword || "Blogging"} Platforms Compared: ${
+        new Date().getFullYear()
+      } Guide`
     );
     title.set(base);
   };
@@ -187,13 +461,18 @@ export default function SeoDetails() {
   const improveTitle = () => {
     const t = title.value;
     let improved = titleCase((t || "").replace(/\s+/g, " ").trim());
-    if (includePrimaryIn(improved)) improved = `${primaryKeyword} — ${improved}`;
-    if (!/(\d{4})/.test(improved)) improved += ` (${new Date().getFullYear()})`;
+    if (includePrimaryIn(improved))
+      improved = `${primaryKeyword} — ${improved}`;
+    if (!/(\d{4})/.test(improved)) {
+      improved += ` (${new Date().getFullYear()})`;
+    }
     title.set(improved);
   };
 
   const generateSlug = () => {
-    const s = slugify(primaryKeyword ? `${primaryKeyword} ${title.value}` : title.value);
+    const s = slugify(
+      primaryKeyword ? `${primaryKeyword} ${title.value}` : title.value
+    );
     permalink.set(s);
   };
 
@@ -206,9 +485,9 @@ export default function SeoDetails() {
     description.set(crafted);
   };
 
-  // --- Lint: Title corrections (deps trimmed)
+  // --- Lint: Title corrections
   const titleIssues = useMemo(() => {
-    const tVal = title.value; // use a local alias
+    const tVal = title.value;
     const issues = [];
     if (/[a-z]/.test(tVal) && tVal === tVal.toLowerCase()) {
       issues.push({
@@ -228,44 +507,61 @@ export default function SeoDetails() {
       issues.push({
         id: "trim",
         label: "Trim length to under ~60 characters",
-        apply: () => title.set(tVal.slice(0, 60).replace(/\s+\S*$/, "")),
+        apply: () =>
+          title.set(tVal.slice(0, 60).replace(/\s+\S*$/, "")),
       });
     }
     if (!/(\d{4})/.test(tVal)) {
       issues.push({
         id: "fresh",
         label: "Add current year for freshness",
-        apply: () => title.set(`${tVal} (${new Date().getFullYear()})`),
+        apply: () =>
+          title.set(`${tVal} (${new Date().getFullYear()})`),
       });
     }
     return issues;
-  }, [primaryKeyword, includePrimaryIn, title]); // <-- no 'title.value' here, and 'title' is used (title.set)
+  }, [primaryKeyword, includePrimaryIn, title]);
 
   // --- Keyword input handlers
   const addKeyword = (k) => {
     const cleaned = titleCase((k || "").trim());
     if (!cleaned) return;
     setKeywords((prev) => {
-      if (prev.find((p) => p.toLowerCase() === cleaned.toLowerCase())) return prev;
+      if (
+        prev.find(
+          (p) => p.toLowerCase() === cleaned.toLowerCase()
+        )
+      )
+        return prev;
       return [...prev, cleaned];
     });
     setKwDraft("");
   };
 
   const removeKeyword = (k) =>
-    setKeywords((prev) => prev.filter((p) => p.toLowerCase() !== (k || "").toLowerCase()));
+    setKeywords((prev) =>
+      prev.filter(
+        (p) =>
+          p.toLowerCase() !== (k || "").toLowerCase()
+      )
+    );
 
   const kwSuggestions = useMemo(() => {
     const pool = Array.from(
       new Set(
-        [...SUGGESTED_KEYWORDS, ...title.value.toLowerCase().split(/\W+/)].filter(Boolean)
+        [
+          ...SUGGESTED_KEYWORDS,
+          ...title.value.toLowerCase().split(/\W+/),
+        ].filter(Boolean)
       )
     );
     return pool
       .filter(
         (s) =>
           s.startsWith((kwDraft || "").toLowerCase()) &&
-          !keywords.map((k) => k.toLowerCase()).includes(s.toLowerCase())
+          !keywords
+            .map((k) => k.toLowerCase())
+            .includes(s.toLowerCase())
       )
       .slice(0, 6);
   }, [kwDraft, keywords, title.value]);
@@ -278,20 +574,117 @@ export default function SeoDetails() {
   return (
     <div
       className="rounded-2xl border border-gray-200 bg-white text-[12px] text-gray-600 shadow-sm"
-      style={{ height: PANEL_HEIGHT, overflowY: "auto", padding: 16, paddingRight: 12 }}
+      style={{
+        height: PANEL_HEIGHT,
+        overflowY: "auto",
+        padding: 16,
+        paddingRight: 12,
+      }}
     >
       {/* SERP Preview Header */}
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-[18px] font-semibold text-gray-900">SEO Details</div>
+        <div className="text-[18px] font-semibold text-gray-900">
+          SEO Details
+        </div>
         <div className="flex items-center gap-2">
-          <IconButton title="Desktop preview" onClick={() => setDevice("desktop")}>
-            <Monitor className={`h-4 w-4 ${device === "desktop" ? "text-emerald-600" : ""}`} />
+          <IconButton
+            title="Desktop preview"
+            onClick={() => setDevice("desktop")}
+          >
+            <Monitor
+              className={`h-4 w-4 ${
+                device === "desktop" ? "text-emerald-600" : ""
+              }`}
+            />
           </IconButton>
-          <IconButton title="Mobile preview" onClick={() => setDevice("mobile")}>
-            <Smartphone className={`h-4 w-4 ${device === "mobile" ? "text-emerald-600" : ""}`} />
+          <IconButton
+            title="Mobile preview"
+            onClick={() => setDevice("mobile")}
+          >
+            <Smartphone
+              className={`h-4 w-4 ${
+                device === "mobile" ? "text-emerald-600" : ""
+              }`}
+            />
           </IconButton>
         </div>
       </div>
+
+      {/* Live SEO data summary (from seoData) */}
+      {seoLoading && (
+        <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-600">
+          Loading live SEO data…
+        </div>
+      )}
+
+      {seoError && !seoLoading && (
+        <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-700">
+          Failed to load live SEO data: {seoError}
+        </div>
+      )}
+
+      {!seoLoading && !seoError && (technical || authority) && (
+        <div className="mb-4 grid gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-700 sm:grid-cols-2">
+          {technical && (
+            <div>
+              <div className="text-[12px] font-semibold text-gray-900">
+                Technical SEO
+              </div>
+              {performanceScore != null && (
+                <div className="mt-1">
+                  Performance score:{" "}
+                  <span className="font-semibold">
+                    {Math.round(performanceScore)}
+                  </span>
+                </div>
+              )}
+              {(lcp != null || cls != null) && (
+                <div className="mt-1 space-y-0.5">
+                  {lcp != null && (
+                    <div>
+                      LCP:{" "}
+                      <span className="font-semibold">
+                        {lcp}
+                      </span>
+                    </div>
+                  )}
+                  {cls != null && (
+                    <div>
+                      CLS:{" "}
+                      <span className="font-semibold">
+                        {cls}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {authority && (
+            <div>
+              <div className="text-[12px] font-semibold text-gray-900">
+                Authority
+              </div>
+              {authority.domainRating != null && (
+                <div className="mt-1">
+                  Domain Rating:{" "}
+                  <span className="font-semibold">
+                    {authority.domainRating}
+                  </span>
+                </div>
+              )}
+              {authority.referringDomains != null && (
+                <div className="mt-1">
+                  Referring domains:{" "}
+                  <span className="font-semibold">
+                    {authority.referringDomains}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* SERP Preview Card */}
       <div className="mb-6 rounded-xl border border-gray-200 p-4">
@@ -302,7 +695,9 @@ export default function SeoDetails() {
         <div className="mb-2 text-[20px] font-semibold leading-snug text-[#1a0dab]">
           {title.value}
         </div>
-        <div className="text-[13px] leading-relaxed">{description.value}</div>
+        <div className="text-[13px] leading-relaxed">
+          {description.value}
+        </div>
       </div>
 
       {/* Focus Keywords */}
@@ -326,7 +721,10 @@ export default function SeoDetails() {
                     new Set(
                       title.value
                         .split(/\W+/)
-                        .filter((w) => w.length > 3 && isNaN(Number(w)))
+                        .filter(
+                          (w) =>
+                            w.length > 3 && isNaN(Number(w))
+                        )
                     )
                   );
                   setKeywords(words.slice(0, 5).map(titleCase));
@@ -335,7 +733,10 @@ export default function SeoDetails() {
                 <Sparkles className="h-4 w-4" />
                 Suggest
               </IconButton>
-              <IconButton title="Copy keywords" onClick={() => copy(keywords.join(", "))}>
+              <IconButton
+                title="Copy keywords"
+                onClick={() => copy(keywords.join(", "))}
+              >
                 <Copy className="h-4 w-4" />
                 Copy
               </IconButton>
@@ -348,7 +749,9 @@ export default function SeoDetails() {
             <span
               key={k}
               className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] ${
-                i === 0 ? "ring-1 ring-emerald-600 text-emerald-700" : "text-emerald-700"
+                i === 0
+                  ? "ring-1 ring-emerald-600 text-emerald-700"
+                  : "text-emerald-700"
               }`}
               title={i === 0 ? "Primary keyword" : undefined}
             >
@@ -407,7 +810,9 @@ export default function SeoDetails() {
               onChange={() => setPillar((p) => !p)}
               className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
             />
-            <span className="text-[12px] text-gray-700">This post is Pillar content</span>
+            <span className="text-[12px] text-gray-700">
+              This post is Pillar content
+            </span>
             <Info
               title="Mark long-form, evergreen resources as Pillar to prioritize internal links."
               className="h-3.5 w-3.5 text-gray-400"
@@ -427,11 +832,18 @@ export default function SeoDetails() {
           }
           right={
             <div className="flex items-center gap-2">
-              <IconButton title="Undo" onClick={title.undo} disabled={!title.prev}>
+              <IconButton
+                title="Undo"
+                onClick={title.undo}
+                disabled={!title.prev}
+              >
                 <RefreshCw className="h-4 w-4" />
                 Undo
               </IconButton>
-              <IconButton title="Copy Title" onClick={() => copy(title.value)}>
+              <IconButton
+                title="Copy Title"
+                onClick={() => copy(title.value)}
+              >
                 <Copy className="h-4 w-4" />
                 Copy
               </IconButton>
@@ -450,10 +862,11 @@ export default function SeoDetails() {
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           <div className="rounded-xl border border-gray-200">
             <div className="flex items-center gap-4 border-b border-gray-100 px-3 py-2 text-gray-700">
-              <span className="text-[12px] font-medium text-emerald-700">Check Correction</span>
+              <span className="text-[12px] font-medium text-emerald-700">
+                Check Correction
+              </span>
             </div>
             <div className="p-3">
-              {/** titleIssues */}
               {titleIssues.length === 0 ? (
                 <div className="flex items-center gap-2 text-gray-500">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
@@ -461,13 +874,20 @@ export default function SeoDetails() {
                 </div>
               ) : (
                 titleIssues.map((it) => (
-                  <label key={it.id} className="mb-2 flex cursor-pointer items-start gap-2">
+                  <label
+                    key={it.id}
+                    className="mb-2 flex cursor-pointer items-start gap-2"
+                  >
                     <input
                       type="checkbox"
                       className="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                      onChange={(e) => e.target.checked && it.apply?.()}
+                      onChange={(e) =>
+                        e.target.checked && it.apply?.()
+                      }
                     />
-                    <span className="text-[12px]">{it.label}</span>
+                    <span className="text-[12px]">
+                      {it.label}
+                    </span>
                   </label>
                 ))
               )}
@@ -476,16 +896,26 @@ export default function SeoDetails() {
 
           <div className="rounded-xl border border-gray-200">
             <div className="flex items-center gap-4 border-b border-gray-100 px-3 py-2 text-gray-700">
-              <span className="text-[12px] font-medium">Generate AI title</span>
+              <span className="text-[12px] font-medium">
+                Generate AI title
+              </span>
             </div>
             <div className="flex items-center justify-between gap-2 p-3">
-              <div className="text-[12px] text-gray-500">Create a fresh, keyword-rich title.</div>
+              <div className="text-[12px] text-gray-500">
+                Create a fresh, keyword-rich title.
+              </div>
               <div className="flex gap-2">
-                <IconButton title="Improve current" onClick={improveTitle}>
+                <IconButton
+                  title="Improve current"
+                  onClick={improveTitle}
+                >
                   <Wand2 className="h-4 w-4" />
                   Improve
                 </IconButton>
-                <IconButton title="Generate new" onClick={generateTitle}>
+                <IconButton
+                  title="Generate new"
+                  onClick={generateTitle}
+                >
                   <Sparkles className="h-4 w-4" />
                   Generate
                 </IconButton>
@@ -506,11 +936,18 @@ export default function SeoDetails() {
           }
           right={
             <div className="flex items-center gap-2">
-              <IconButton title="Undo" onClick={permalink.undo} disabled={!permalink.prev}>
+              <IconButton
+                title="Undo"
+                onClick={permalink.undo}
+                disabled={!permalink.prev}
+              >
                 <RefreshCw className="h-4 w-4" />
                 Undo
               </IconButton>
-              <IconButton title="Copy URL" onClick={() => copy(`${domain}/${slug}`)}>
+              <IconButton
+                title="Copy URL"
+                onClick={() => copy(`${domain}/${slug}`)}
+              >
                 <Link2 className="h-4 w-4" />
                 Copy URL
               </IconButton>
@@ -525,7 +962,10 @@ export default function SeoDetails() {
           className="mb-2 w-full rounded-lg border border-gray-200 bg-white p-3 text-[13px] text-gray-900 outline-none placeholder:text-gray-400 focus:ring-2 focus:ring-emerald-500"
         />
         <div className="mb-2 text-[12px] text-gray-500">
-          Preview: <span className="font-medium text-gray-800">{domain}/{slug}</span>
+          Preview:{" "}
+          <span className="font-medium text-gray-800">
+            {domain}/{slug}
+          </span>
         </div>
         <Bar value={slug.length} max={80} state={slugState} />
 
@@ -536,7 +976,11 @@ export default function SeoDetails() {
           </IconButton>
           <IconButton
             title="Append primary keyword"
-            onClick={() => permalink.set(`${slug}-${slugify(primaryKeyword || "")}`)}
+            onClick={() =>
+              permalink.set(
+                `${slug}-${slugify(primaryKeyword || "")}`
+              )
+            }
             disabled={!primaryKeyword}
           >
             <Hash className="h-4 w-4" />
@@ -556,11 +1000,18 @@ export default function SeoDetails() {
           }
           right={
             <div className="flex items-center gap-2">
-              <IconButton title="Undo" onClick={description.undo} disabled={!description.prev}>
+              <IconButton
+                title="Undo"
+                onClick={description.undo}
+                disabled={!description.prev}
+              >
                 <RefreshCw className="h-4 w-4" />
                 Undo
               </IconButton>
-              <IconButton title="Copy Description" onClick={() => copy(description.value)}>
+              <IconButton
+                title="Copy Description"
+                onClick={() => copy(description.value)}
+              >
                 <Copy className="h-4 w-4" />
                 Copy
               </IconButton>
@@ -581,13 +1032,22 @@ export default function SeoDetails() {
           <IconButton
             title="Lightly improve description"
             onClick={() =>
-              description.set(sentenceCase(description.value.replace(/\s+/g, " ").trim()))
+              description.set(
+                sentenceCase(
+                  description.value
+                    .replace(/\s+/g, " ")
+                    .trim()
+                )
+              )
             }
           >
             <Wand2 className="h-4 w-4" />
             Improve
           </IconButton>
-          <IconButton title="Generate new description" onClick={generateDescription}>
+          <IconButton
+            title="Generate new description"
+            onClick={generateDescription}
+          >
             <Sparkles className="h-4 w-4" />
             Generate
           </IconButton>
@@ -596,7 +1056,8 @@ export default function SeoDetails() {
         {includePrimaryIn(description.value) && primaryKeyword && (
           <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800">
             <Circle className="h-3.5 w-3.5" />
-            Consider including your primary keyword “{primaryKeyword}” in the description.
+            Consider including your primary keyword “{primaryKeyword}” in
+            the description.
           </div>
         )}
       </div>

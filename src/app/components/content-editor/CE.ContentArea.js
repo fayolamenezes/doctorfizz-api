@@ -1,3 +1,4 @@
+// components/content-editor/CE.ContentArea.js
 "use client";
 
 import React, {
@@ -106,6 +107,10 @@ export default function CEContentArea({
   optPageId,
   /** OPTIONAL: explicit docId from parent (e.g. slug/id) */
   docId: docIdProp,
+  // Unified SEO data from /api/seo (passed from ContentEditor)
+  seoData,
+  seoLoading,
+  seoError,
 }) {
   const editorRef = useRef(null);
 
@@ -554,6 +559,12 @@ export default function CEContentArea({
              guessing from editor HTML and falling back to the first page. */
           page={page}
           optPageId={optPageId}
+          // New: pass docId down so Canvas/autosave can be per-document (if panel ever needs it)
+          docId={docId}
+          // Unified SEO data from /api/seo (desktop research panel)
+          seoData={seoData}
+          seoLoading={seoLoading}
+          seoError={seoError}
         />
       </div>
 

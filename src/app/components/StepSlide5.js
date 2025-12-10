@@ -1,4 +1,3 @@
-// /mnt/data/StepSlide5.js
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -77,72 +76,53 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
     return "example.com";
   }, [normalizeHost, getStoredSite]);
 
-  const extractCompetitors = useCallback((row) => {
-    const biz = [];
-    const ser = [];
-    for (let i = 1; i <= 6; i++) {
-      const v = row?.[`Business_Competitor_${i}`];
-      if (typeof v === "string" && v.trim()) biz.push(v.trim());
-    }
-    for (let i = 1; i <= 6; i++) {
-      const v = row?.[`Search_Competitor_${i}`];
-      if (typeof v === "string" && v.trim()) ser.push(v.trim());
-    }
-    const dedup = (arr) => {
-      const seen = new Set();
-      return arr.filter((x) => {
-        const k = x.toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
-    };
-    return { biz: dedup(biz).slice(0, 8), ser: dedup(ser).slice(0, 8) };
-  }, []);
-
-  /* ---------------- Load suggestions for the chosen site ---------------- */
+  /* ---------------- Load suggestions for the chosen site (API) ---------------- */
   useEffect(() => {
     let isMounted = true;
+
     async function load() {
       setIsLoading(true);
       setLoadError(null);
       try {
         const target = getTargetSite();
-        const res = await fetch("/data/seo-data.json", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to load seo-data.json (${res.status})`);
-        const rows = await res.json();
-        const host = normalizeHost(target);
-        const variants = host ? [host, `www.${host}`] : [];
 
-        const match = rows.find((r) => {
-          const d1 = normalizeHost(r?.Domain);
-          const d2 = normalizeHost(r?.["Domain/Website"]);
-          return (d1 && variants.includes(d1)) || (d2 && variants.includes(d2));
+        const res = await fetch("/api/competitors/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain: target }),
         });
 
-        const { biz, ser } = extractCompetitors(match || {});
-        const bizFinal = (biz.length ? biz : ["Comp-1", "Comp-2", "Comp-3", "Comp-4"]).concat("More");
-        const serFinal = (ser.length ? ser : ["Comp-1", "Comp-2", "Comp-3", "Comp-4"]).concat("More");
+        if (!res.ok) throw new Error(`Failed to load competitors (${res.status})`);
+
+        const data = await res.json();
+        const biz = Array.isArray(data.businessCompetitors) ? data.businessCompetitors : [];
+        const ser = Array.isArray(data.searchCompetitors) ? data.searchCompetitors : [];
+
+        // only real competitors, max 4 each
+        const bizFinal = biz.slice(0, 4);
+        const serFinal = ser.slice(0, 4);
 
         if (isMounted) {
-          setBusinessSuggestions(bizFinal);
-          setSearchSuggestions(serFinal);
+          setBusinessSuggestions(bizFinal.concat("More"));
+          setSearchSuggestions(serFinal.concat("More"));
         }
       } catch (err) {
         if (isMounted) {
           setLoadError(err?.message || "Failed to load competitor data");
-          setBusinessSuggestions(["Comp-1", "Comp-2", "Comp-3", "Comp-4", "More"]);
-          setSearchSuggestions(["Comp-1", "Comp-2", "Comp-3", "Comp-4", "More"]);
+          // no fake competitors; just allow user to add their own
+          setBusinessSuggestions(["More"]);
+          setSearchSuggestions(["More"]);
         }
       } finally {
         if (isMounted) setIsLoading(false);
       }
     }
+
     load();
     return () => {
       isMounted = false;
     };
-  }, [getTargetSite, normalizeHost, extractCompetitors]);
+  }, [getTargetSite]);
 
   /* ---------------- Fixed panel height ---------------- */
   const recomputePanelHeight = () => {
@@ -249,24 +229,23 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
     }
   }, [selectedBusinessCompetitors, selectedSearchCompetitors, onCompetitorSubmit]);
 
-  /* ---------------- Auto-scroll to bottom (align with StepSlide3/4 pattern) ---------------- */
+  /* ---------------- Auto-scroll to bottom ---------------- */
   useEffect(() => {
     if (tailRef.current) {
-      // wait a frame so any new DOM (chips/summary/inputs) is rendered before scrolling
       requestAnimationFrame(() => {
         tailRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
       });
     }
   }, [
-    showSummary,                             // when the summary appears
-    selectedBusinessCompetitors.length,      // as chips are added/removed
+    showSummary,
+    selectedBusinessCompetitors.length,
     selectedSearchCompetitors.length,
-    addingBusiness,                          // when inline inputs open/close
+    addingBusiness,
     addingSearch,
-    isLoading,                               // after suggestions finish loading
+    isLoading,
   ]);
 
-  /* ---------------- Reusable chip renderer (uses global .keyword-chip) ---------------- */
+  /* ---------------- Reusable chip renderer ---------------- */
   const Chip = ({ label, isSelected, onClick, disabled }) => (
     <button
       onClick={onClick}
@@ -352,7 +331,7 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
                   {isLoading
                     ? "Scanning your site…"
                     : loadError
-                    ? "Showing starter suggestions (we'll refine once data is available)."
+                    ? "Showing your own inputs (we couldn’t auto-detect enough competitors)."
                     : "I scanned your site and found these competitors."}
                 </p>
               </div>
@@ -365,7 +344,7 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
 
                 <div className="flex flex-wrap justify-start gap-2 sm:gap-2.5 md:gap-3 items-center -mx-1">
                   {isLoading && businessSuggestions.length === 0
-                    ? Array.from({ length: 6 }).map((_, i) => (
+                    ? Array.from({ length: 4 }).map((_, i) => (
                         <span key={`biz-skel-${i}`} className="chip-skel mx-1" />
                       ))
                     : businessSuggestions.map((label) => {
@@ -423,7 +402,7 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
 
                 <div className="flex flex-wrap justify-start gap-2 sm:gap-2.5 md:gap-3 items-center -mx-1">
                   {isLoading && searchSuggestions.length === 0
-                    ? Array.from({ length: 6 }).map((_, i) => (
+                    ? Array.from({ length: 4 }).map((_, i) => (
                         <span key={`ser-skel-${i}`} className="chip-skel mx-1" />
                       ))
                     : searchSuggestions.map((label) => {
@@ -473,7 +452,7 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
                 </div>
               </div>
 
-              {/* Summary copy (same as Step 4) */}
+              {/* Summary copy */}
               {showSummary && (
                 <div className="max-w-[640px] text-left self-start mt-5 sm:mt-6">
                   <h3 className="text-[15px] sm:text-[16px] md:text-[18px] font-bold text-[var(--text)] mb-2.5 sm:mb-3">
@@ -494,7 +473,7 @@ export default function StepSlide5({ onNext, onBack, onCompetitorSubmit }) {
         </div>
       </div>
 
-      {/* Bottom bar (same rhythm as other steps) */}
+      {/* Bottom bar */}
       <div ref={bottomBarRef} className="flex-shrink-0 bg-transparent">
         <div className="border-t border-[var(--border)]" />
         <div className="mx-auto w-full max-w-[1120px] px-3 sm:px-4 md:px-6">

@@ -1,8 +1,6 @@
-// components/content-editor/CE.ResearchPanel.js
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import React, { useMemo, useState } from "react";
 import { ChevronRight, Search as SearchIcon, RefreshCw, Copy as CopyIcon } from "lucide-react";
 
 /* ===============================
@@ -30,7 +28,7 @@ function IconHintButton({ onClick, label = "Paste to editor", size = 18, classNa
         />
       </button>
 
-      {/* Hint bubble (unchanged) */}
+      {/* Hint bubble */}
       <span
         className="pointer-events-none absolute -top-7 right-0 rounded-md border border-[var(--border)] bg-white px-2 py-0.5 text-[10px] font-medium text-gray-700 shadow-sm opacity-0 transition-opacity duration-75 whitespace-nowrap
                    group-hover:opacity-100 group-focus-within:opacity-100
@@ -41,7 +39,6 @@ function IconHintButton({ onClick, label = "Paste to editor", size = 18, classNa
     </div>
   );
 }
-
 
 function BrandDot({ label }) {
   return (
@@ -113,19 +110,23 @@ function FAQRow({ iconLabel, title, source, onPaste, subtitle }) {
 }
 
 /* ===============================
-   Utilities to read JSON
+   Small utilities
 ================================ */
-function normalizePages(json) {
-  // Accept: top-level array OR { pages: [...] } OR single object
-  if (!json) return [];
-  if (Array.isArray(json)) return json;
-  if (Array.isArray(json.pages)) return json.pages;
-  return [json];
+function pickString(...vals) {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return "";
 }
 
-function pickString(...vals) {
-  for (const v of vals) if (typeof v === "string" && v.trim()) return v.trim();
-  return "";
+function hostFromUrl(url) {
+  try {
+    if (!url) return "";
+    const withProto = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    return new URL(withProto).hostname || "";
+  } catch {
+    return "";
+  }
 }
 
 /* ===============================
@@ -137,128 +138,110 @@ export default function SeoAdvancedFaqs({
   queryFilter = "",
   /** Max height of the scrollable FAQ list area (any CSS length) */
   maxListHeight = "30rem",
+  /** Unified SEO data from /api/seo */
+  seoData,
+  seoLoading,
+  seoError,
 }) {
-  const [raw, setRaw] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [faqTab, setFaqTab] = useState("serp"); // serp | pa | quora | reddit
   const [kwFilter, setKwFilter] = useState("");
 
-  // Load JSON once on mount
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        setLoading(true);
-        const res = await fetch("/data/contenteditor.json", { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const j = await res.json();
-        if (!alive) return;
-        setRaw(j);
-        setError("");
-      } catch (e) {
-        if (!alive) return;
-        setError(e?.message || "Failed to load contenteditor.json");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const loading = !!seoLoading;
+  const error = seoError || "";
 
-  // Build a unified view of FAQs from JSON
+  // Effective domain: prop wins, else infer from authority/serper
+  const effectiveDomain = useMemo(() => {
+    if (domain) return String(domain).toLowerCase();
+    if (seoData?.authority?.domain) return String(seoData.authority.domain).toLowerCase();
+    const firstOrganic = seoData?.serper?.organic?.[0]?.link;
+    if (firstOrganic) return hostFromUrl(firstOrganic).toLowerCase();
+    return "";
+  }, [domain, seoData]);
+
+  /* ===============================
+     Build FAQ rows from seoData.serper
+     =============================== */
   const { serpRows, paRows, quoraRows, redditRows } = useMemo(() => {
-    const pages = normalizePages(raw);
-
-    // Optional filter to a specific domain/page
-    const subset = pages.filter((p) => {
-      const d = (p?.domain || p?.title || "").toLowerCase();
-      const byDomain = domain ? d.includes(String(domain).toLowerCase()) : true;
-      const byQuery = queryFilter ? d.includes(String(queryFilter).toLowerCase()) : true;
-      return byDomain && byQuery;
-    });
-
-    const take = subset.length ? subset : pages;
+    const serper = seoData?.serper || {};
+    const organic = Array.isArray(serper.organic) ? serper.organic : [];
+    const peopleAlsoAsk = Array.isArray(serper.peopleAlsoAsk)
+      ? serper.peopleAlsoAsk
+      : Array.isArray(serper.relatedQuestions)
+      ? serper.relatedQuestions
+      : [];
 
     const serp = [];
     const paa = [];
     const quora = [];
     const reddit = [];
 
-    for (const page of take) {
-      const src = pickString(page?.domain, page?.title, "source");
-      const faqs = page?.faqs || {};
+    // SERP rows from organic results
+    for (const item of organic) {
+      const url = item.link || item.url || "";
+      const host = hostFromUrl(url);
+      const lcHost = host.toLowerCase();
+      const dMatch = effectiveDomain ? lcHost.includes(effectiveDomain) : true;
+      const qMatch = queryFilter
+        ? (host + " " + (item.title || "")).toLowerCase().includes(queryFilter.toLowerCase())
+        : true;
+      if (!dMatch || !qMatch) continue;
 
-      // SERP tab — expects array of { title, content }
-      if (Array.isArray(faqs.serp)) {
-        for (const item of faqs.serp) {
-          const t = pickString(item?.title, item?.question);
-          if (!t) continue;
-          serp.push({
-            iconLabel: src,
-            title: t,
-            source: src,
-            fullText: item?.content || item?.answer || "",
-          });
-        }
-      }
-      // People Also Ask — array of { question, answer }
-      if (Array.isArray(faqs.peopleAlsoAsk)) {
-        for (const item of faqs.peopleAlsoAsk) {
-          const t = pickString(item?.question, item?.title);
-          if (!t) continue;
-          paa.push({
-            iconLabel: "G",
-            title: `People also ask: ${t}`,
-            source: src,
-            fullText: item?.answer || "",
-          });
-        }
-      }
-      // Quora — array of { title, url }
-      if (Array.isArray(faqs.quora)) {
-        for (const item of faqs.quora) {
-          const t = pickString(item?.title);
-          if (!t) continue;
-          quora.push({
-            iconLabel: "Q",
-            title: t,
-            source: item?.url ? new URL(item.url).hostname : "Quora",
-            link: item?.url || "",
-          });
-        }
-      }
-      // Reddit — array of { title, url }
-      if (Array.isArray(faqs.reddit)) {
-        for (const item of faqs.reddit) {
-          const t = pickString(item?.title);
-          if (!t) continue;
-          let host = "Reddit";
-          try {
-            host = new URL(item?.url).hostname;
-          } catch {}
-          reddit.push({
-            iconLabel: "R",
-            title: t,
-            source: host,
-            link: item?.url || "",
-          });
-        }
+      const title = pickString(item.title, item.question, url);
+      if (!title) continue;
+
+      const fullText = item.snippet || item.description || "";
+
+      serp.push({
+        iconLabel: host || "G",
+        title,
+        source: host || "Google",
+        fullText,
+        link: url,
+      });
+
+      // Quora/Reddit from organic domains
+      if (lcHost.includes("quora.com")) {
+        quora.push({
+          iconLabel: "Q",
+          title,
+          source: host || "Quora",
+          link: url,
+        });
+      } else if (lcHost.includes("reddit.com")) {
+        reddit.push({
+          iconLabel: "R",
+          title,
+          source: host || "Reddit",
+          link: url,
+        });
       }
     }
 
+    // People Also Ask rows
+    for (const item of peopleAlsoAsk) {
+      const q = pickString(item.question, item.title);
+      if (!q) continue;
+      paa.push({
+        iconLabel: "G",
+        title: `People also ask: ${q}`,
+        source: "Google",
+        fullText: item.snippet || item.answer || "",
+        link: item.url || "",
+      });
+    }
+
     return { serpRows: serp, paRows: paa, quoraRows: quora, redditRows: reddit };
-  }, [raw, domain, queryFilter]);
+  }, [seoData, effectiveDomain, queryFilter]);
 
   const filtered = useMemo(() => {
     const rows =
-      faqTab === "serp" ? serpRows :
-      faqTab === "pa" ? paRows :
-      faqTab === "quora" ? quoraRows :
-      redditRows;
+      faqTab === "serp"
+        ? serpRows
+        : faqTab === "pa"
+        ? paRows
+        : faqTab === "quora"
+        ? quoraRows
+        : redditRows;
 
     if (!kwFilter) return rows;
     const q = kwFilter.toLowerCase();
@@ -291,7 +274,13 @@ export default function SeoAdvancedFaqs({
                 : "text-[var(--muted)] hover:text-[var(--text-primary)]"
             }`}
           >
-            {k === "serp" ? "SERP" : k === "pa" ? "People also ask" : k === "quora" ? "Quora" : "Reddit"}
+            {k === "serp"
+              ? "SERP"
+              : k === "pa"
+              ? "People also ask"
+              : k === "quora"
+              ? "Quora"
+              : "Reddit"}
           </button>
         ))}
       </div>
@@ -312,7 +301,14 @@ export default function SeoAdvancedFaqs({
         {loading ? (
           <div className="py-6 text-center text-[12px] text-[var(--muted)]">Loading FAQs…</div>
         ) : error ? (
-          <EmptyState title="Couldn't load JSON" subtitle={error} onRetry={() => location.reload()} />
+          <EmptyState
+            title="Couldn't load FAQs"
+            subtitle={error}
+            onRetry={() => {
+              // let parent re-trigger /api/seo; local reload is a simple fallback
+              location.reload();
+            }}
+          />
         ) : filtered.length === 0 ? (
           <EmptyState />
         ) : (

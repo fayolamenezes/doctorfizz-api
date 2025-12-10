@@ -16,6 +16,7 @@ import {
  * - onDashboard(): open dashboard
  * - navigateToStep?(n: number)
  *
+ * - websiteData:   { website/site/url/... }
  * - businessData:   { industrySector/industry, offeringType/offering, specificService/category }
  * - languageLocationData: selections[] or flat fields
  * - keywordData:    string[] | {label: string}[]
@@ -40,7 +41,6 @@ export default function Step5Slide2({
   const bottomBarRef = useRef(null);
   const loaderAnchorRef = useRef(null);
   const [panelHeight, setPanelHeight] = useState(null);
-  const dashTimer = useRef(null);
 
   const recomputePanelHeight = () => {
     if (typeof window === "undefined" || !panelRef.current) return;
@@ -155,21 +155,124 @@ export default function Step5Slide2({
     setTimeout(tryScroll, 120);
   };
 
-  const handleDashboard = () => {
+  // Helper: normalize domain like in Dashboard
+  const normalizeDomain = (input = "") => {
+    try {
+      const url = input.includes("://")
+        ? new URL(input)
+        : new URL(`https://${input}`);
+      let host = url.hostname.toLowerCase();
+      if (host.startsWith("www.")) host = host.slice(4);
+      return host;
+    } catch {
+      return String(input)
+        .toLowerCase()
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .split("/")[0];
+    }
+  };
+
+  const resolveDomainFromContext = () => {
+    // 1) Prefer websiteData if provided
+    if (websiteData) {
+      const cand =
+        websiteData.website ||
+        websiteData.site ||
+        websiteData.url ||
+        websiteData.domain ||
+        websiteData.host;
+      if (cand) return normalizeDomain(String(cand));
+    }
+
+    // 2) Fallback to storage (same keys used elsewhere)
+    if (typeof window !== "undefined") {
+      const keys = [
+        "websiteData",
+        "site",
+        "website",
+        "selectedWebsite",
+        "drfizzm.site",
+        "drfizzm.website",
+      ];
+      for (const k of keys) {
+        try {
+          const raw = localStorage.getItem(k) ?? sessionStorage.getItem(k);
+          if (!raw) continue;
+          try {
+            const obj = JSON.parse(raw);
+            const val =
+              obj?.website || obj?.site || obj?.domain || obj?.host || raw;
+            if (val) return normalizeDomain(String(val));
+          } catch {
+            return normalizeDomain(String(raw));
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // 3) Fallback
+    return "example.com";
+  };
+
+  const handleDashboard = async () => {
     if (loading) return;
     setLoading(true);
     scrollLoaderIntoView();
-    dashTimer.current = setTimeout(() => {
+
+    try {
+      const domain = resolveDomainFromContext();
+      const url = `https://${domain}`;
+
+      // Choose a keyword for the SEO call
+      let keyword = domain;
+      if (keywords.length > 0) {
+        const first = keywords[0];
+        if (typeof first === "string") keyword = first;
+      }
+
+      const payload = {
+        url,
+        keyword,
+        countryCode: "in",
+        languageCode: "en",
+        depth: 10,
+        // full providers list so this matches Dashboard expectations
+        providers: ["psi", "authority", "dataforseo", "content"],
+      };
+
+      const res = await fetch("/api/seo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`SEO API failed: ${res.status}`);
+      }
+
+      const json = await res.json();
+
+      // Stash for Dashboard to read & skip its own fetch
+      if (typeof window !== "undefined") {
+        window.__drfizzSeoPrefetch = json;
+        window.dispatchEvent(new Event("dashboard:open"));
+      }
+
+      onDashboard?.();
+    } catch (e) {
+      console.error("[Step5Slide2] Failed to prefetch SEO:", e);
+      // Fallback: still open dashboard (it will fetch itself like before)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("dashboard:open"));
       }
       onDashboard?.();
-    }, 6000);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  useEffect(() => {
-    return () => clearTimeout(dashTimer.current);
-  }, []);
 
   // ----- UI primitives ----------------------------------------------------------
   const CardShell = ({
@@ -275,6 +378,7 @@ export default function Step5Slide2({
           filter: blur(8px);
           animation: shine 1.6s linear infinite;
         }
+        @keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
       `}</style>
 
       {/* ---------------- Fixed-height content area ---------------- */}

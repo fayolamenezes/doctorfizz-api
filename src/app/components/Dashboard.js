@@ -285,12 +285,23 @@ export default function Dashboard({ onOpenContentEditor }) {
 
   const searchParams = useSearchParams();
   const [domain, setDomain] = useState(null);
-  // Live SEO data from /api/seo
-  const [seo, setSeo] = useState(null);
-  const [seoError, setSeoError] = useState("");
-  const [seoLoading, setSeoLoading] = useState(false);
 
-  // Watch for query param AND storage
+  // Seed SEO state from any prefetch done in the wizard (Step5Slide2)
+  const getInitialSeo = () => {
+    if (typeof window !== "undefined" && window.__drfizzSeoPrefetch) {
+      return window.__drfizzSeoPrefetch;
+    }
+    return null;
+  };
+
+  const initialSeo = getInitialSeo();
+
+  // Live SEO data from /api/seo (prefilled if we navigated from the wizard)
+  const [seo, setSeo] = useState(initialSeo);
+  const [seoError, setSeoError] = useState("");
+  const [seoLoading, setSeoLoading] = useState(!initialSeo);
+
+// Watch for query param AND storage
   useEffect(() => {
     const site = getSiteFromStorageOrQuery(searchParams);
     console.log("[Dashboard] Resolved domain from storage/query:", site);
@@ -300,6 +311,9 @@ export default function Dashboard({ onOpenContentEditor }) {
   // Fetch unified SEO data from /api/seo whenever domain changes
   useEffect(() => {
     if (!domain || domain === "example.com") return;
+
+    // If we already have SEO data (prefetched from the wizard), skip refetch.
+    if (seo) return;
 
     let alive = true;
     (async () => {
@@ -347,7 +361,7 @@ export default function Dashboard({ onOpenContentEditor }) {
     return () => {
       alive = false;
     };
-  }, [domain]);
+  }, [domain, seo]);
 
   // Map unified /api/seo response → the "selected" shape the UI expects
   // Map unified /api/seo response → the "selected" shape the UI expects

@@ -1,7 +1,6 @@
-// components/content-editor/research-panel/SeoAdvancedLinks.js
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Image from "next/image";
 import {
   ChevronRight,
@@ -101,7 +100,7 @@ function LinkRow({ rankScore, domain, sources, onPaste }) {
     : null;
 
   return (
-    <div className="rounded-2xl border border-[var(--border)] bg-white shadow-sm dark:bg-[var(--bg-panel)]">
+    <div className="rounded-2xl border border-[var(--border)] bg-whiteshadow-sm dark:bg-[var(--bg-panel)]">
       <button
         type="button"
         className="group w-full px-4 py-3 flex items-center justify-between gap-3 text-left rounded-2xl hover:bg-gray-50 dark:hover:bg-[var(--bg-hover)]"
@@ -177,60 +176,174 @@ function DrawerHeader({ title, onClose, countText }) {
   );
 }
 
+/* ===========================
+   Helper: derive links from seoData (DataForSEO)
+   =========================== */
+
+function deriveLinksFromSeoData(seoData) {
+  const result = {
+    externalRows: [],
+    internalRows: [],
+    externalTotal: 0,
+    totalDomains: 0,
+  };
+
+  if (!seoData || !seoData.dataForSeo) return result;
+
+  const dfs = seoData.dataForSeo;
+
+  const candidates = [];
+
+  // Try several likely shapes from DataForSEO-style data
+  if (Array.isArray(dfs.backlinkDomains)) candidates.push(...dfs.backlinkDomains);
+  if (Array.isArray(dfs.backlinksDomains)) candidates.push(...dfs.backlinksDomains);
+  if (Array.isArray(dfs.topBacklinksDomains)) candidates.push(...dfs.topBacklinksDomains);
+  if (Array.isArray(dfs.backlinks)) candidates.push(...dfs.backlinks);
+  if (Array.isArray(dfs.externalLinks)) candidates.push(...dfs.externalLinks);
+
+  const seen = new Set();
+  let totalLinks = 0;
+
+  const rows = [];
+
+  for (const row of candidates) {
+    const domain =
+      row.domain ||
+      row.target ||
+      row.target_url ||
+      row.targetUrl ||
+      row.referring_domain ||
+      row.url ||
+      row.host ||
+      "";
+
+    const key = String(domain || "").toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+
+    const sources =
+      row.backlinks_count ??
+      row.backlinks ??
+      row.links ??
+      row.external_links ??
+      row.total ??
+      row.count ??
+      row.referring_pages ??
+      0;
+
+    const rankScore =
+      row.rankScore ??
+      row.score ??
+      row.domain_rank ??
+      row.page_rank ??
+      row.rating ??
+      0;
+
+    totalLinks += Number(sources) || 0;
+
+    rows.push({
+      domain,
+      sources: Number(sources) || 0,
+      rankScore: Number(rankScore) || 0,
+    });
+  }
+
+  result.externalRows = rows;
+  result.externalTotal =
+    typeof dfs.externalTotal === "number"
+      ? dfs.externalTotal
+      : totalLinks || rows.length;
+
+  result.totalDomains =
+    typeof dfs.totalDomains === "number"
+      ? dfs.totalDomains
+      : rows.length;
+
+  // Internal links are usually page-level; if you later add them to /api/seo,
+  // you can map them here.
+  result.internalRows = Array.isArray(dfs.internalLinks)
+    ? dfs.internalLinks.map((r) => ({
+        domain: r.url || r.path || "",
+        sources: r.count ?? r.links ?? 0,
+        rankScore: r.rankScore ?? 0,
+      }))
+    : [];
+
+  return result;
+}
+
+/* ===========================
+   Main component
+   =========================== */
+
 export default function SeoAdvancedLinks({
   onPasteToEditor,
-  currentPage,
-  linksExternal,
-  linksInternal,
-  cfgLoading,
-  cfgError,
+  // unified SEO pipeline from /api/seo
+  seoData,
+  seoLoading,
+  seoError,
 }) {
   const [kwFilter, setKwFilter] = useState("");
   const [linkTab, setLinkTab] = useState("external");
 
-  const linksData = currentPage?.linksTab || {};
+  // Only care about SEO API now
+  const loading = !!seoLoading;
+  const error = seoError || "";
 
-  const externalRows =
-    Array.isArray(linksExternal) && linksExternal.length
-      ? linksExternal
-      : Array.isArray(linksData.external)
-      ? linksData.external
-      : [];
-
-  const internalRows =
-    Array.isArray(linksInternal) && linksInternal.length
-      ? linksInternal
-      : Array.isArray(linksData.internal)
-      ? linksData.internal
-      : [];
-
-  const externalTotal =
-    typeof linksData.externalTotal === "number"
-      ? linksData.externalTotal
-      : externalRows.length || 786;
-
-  const totalDomains =
-    typeof linksData.totalDomains === "number"
-      ? linksData.totalDomains
-      : externalRows.length || 19;
-
-  const rows = (linkTab === "external" ? externalRows : internalRows).map(
-    (r) => ({
-      rankScore: r.rankScore ?? r.value ?? 0,
-      domain: r.domain ?? r.url ?? r.targetUrl ?? "",
-      sources:
-        r.links ??
-        r.linkCount ??
-        r.count ??
-        r.total ??
-        r.sources ??
-        r.source ??
-        0,
-    })
+  // Derive links from /api/seo (DataForSEO) once
+  const apiLinks = useMemo(
+    () => deriveLinksFromSeoData(seoData || {}),
+    [seoData]
   );
 
+  // External vs internal rows from API only
+  const externalRowsRaw = apiLinks.externalRows || [];
+  const internalRowsRaw = apiLinks.internalRows || [];
+
+  // Totals (external card)
+  const externalTotal =
+    (apiLinks.externalTotal && apiLinks.externalTotal > 0
+      ? apiLinks.externalTotal
+      : externalRowsRaw.length) || 0;
+
+  const totalDomains =
+    (apiLinks.totalDomains && apiLinks.totalDomains > 0
+      ? apiLinks.totalDomains
+      : new Set(
+          externalRowsRaw
+            .map((r) => r.domain || r.url || r.targetUrl || "")
+            .filter(Boolean)
+        ).size || externalRowsRaw.length) || 0;
+
+  const rowsRaw = linkTab === "external" ? externalRowsRaw : internalRowsRaw;
+
+  // Normalize to the shape LinkRow expects
+  const rows = rowsRaw.map((r) => ({
+    rankScore:
+      r.rankScore ??
+      r.value ??
+      r.rank ??
+      r.score ??
+      r.domain_rank ??
+      r.page_rank ??
+      0,
+    domain: r.domain ?? r.url ?? r.targetUrl ?? r.path ?? "",
+    sources:
+      r.links ??
+      r.linkCount ??
+      r.count ??
+      r.total ??
+      r.sources ??
+      r.source ??
+      r.backlinks_count ??
+      r.backlinks ??
+      r.external_links ??
+      r.referring_pages ??
+      0,
+  }));
+
   const filtered = rows.filter((r) =>
-    r.domain.toLowerCase().includes(kwFilter.trim().toLowerCase())
+    (r.domain || "").toLowerCase().includes(kwFilter.trim().toLowerCase())
   );
 
   return (
@@ -295,18 +408,18 @@ export default function SeoAdvancedLinks({
       </div>
 
       <div className="mt-3 space-y-3">
-        {cfgLoading && (
+        {loading && (
           <div className="text-[12px] text-gray-500 dark:text-[var(--muted)]">
             Loading link data…
           </div>
         )}
-        {cfgError && (
+        {!loading && error && (
           <div className="text-[12px] text-rose-600">
-            Failed to load: {cfgError}
+            Failed to load: {error}
           </div>
         )}
-        {!cfgLoading &&
-          !cfgError &&
+        {!loading &&
+          !error &&
           filtered.map((r, idx) => (
             <LinkRow
               key={idx}
@@ -314,7 +427,7 @@ export default function SeoAdvancedLinks({
               onPaste={(text) => onPasteToEditor?.(text)}
             />
           ))}
-        {!cfgLoading && !cfgError && filtered.length === 0 && (
+        {!loading && !error && filtered.length === 0 && (
           <div className="text-[12px] text-gray-500 dark:text-[var(--muted)] px-1 py-2">
             No links match the current filter.
           </div>

@@ -6,8 +6,6 @@ import { fetchOpenPageRank } from "@/lib/seo/openpagerank";
 import { fetchSerp } from "@/lib/seo/serper";
 import { fetchDataForSeo } from "@/lib/seo/dataforseo";
 import { extractPageText } from "@/lib/seo/apyhub";
-import { analyzeWithIbmNlu } from "@/lib/seo/ibm-nlu";
-import { analyzeWithMeaningCloud } from "@/lib/seo/meaningcloud";
 
 /**
  * Helper to safely get the domain from a URL
@@ -132,7 +130,7 @@ export async function POST(request) {
     }
 
     if (providers.includes("dataforseo") && domain) {
-      // NOTE: fetchDataForSeo now expects a domain/URL
+      // NOTE: fetchDataForSeo expects a domain/URL
       // and returns { dataForSeo, seoRows }
       tasks.push(
         fetchDataForSeo(domain, {
@@ -174,46 +172,18 @@ export async function POST(request) {
     }
 
     // -----------------------------------------
-    // 2. CONTENT PIPELINE: APYHUB + NLU PROVIDERS
+    // 2. CONTENT PIPELINE: APYHUB (TEXT ONLY)
     // -----------------------------------------
     if (providers.includes("content")) {
       try {
         const apyResult = await extractPageText(url);
-        const text = apyResult?.apyhub?.text || "";
+        const text = (apyResult?.apyhub?.text || "").trim();
 
         if (text) {
-          const [ibmResult, mcResult] = await Promise.allSettled([
-            analyzeWithIbmNlu(text),
-            analyzeWithMeaningCloud(text),
-          ]);
-
-          const ibm =
-            ibmResult.status === "fulfilled" ? ibmResult.value.ibmNlu : null;
-          const meaningCloud =
-            mcResult.status === "fulfilled"
-              ? mcResult.value.meaningCloud
-              : null;
-
           unified.content = {
+            // raw extracted text for Canvas / Optimize / keyword analysis
             rawText: text,
-            ibmNlu: ibm,
-            meaningCloud,
           };
-
-          if (
-            ibmResult.status === "rejected" ||
-            mcResult.status === "rejected"
-          ) {
-            unified._errors = unified._errors || {};
-            if (ibmResult.status === "rejected") {
-              unified._errors.ibmNlu =
-                ibmResult.reason?.message || "IBM NLU failed";
-            }
-            if (mcResult.status === "rejected") {
-              unified._errors.meaningCloud =
-                mcResult.reason?.message || "MeaningCloud failed";
-            }
-          }
         } else {
           unified._warnings = unified._warnings || [];
           unified._warnings.push("No text extracted from ApyHub");
@@ -221,7 +191,7 @@ export async function POST(request) {
       } catch (err) {
         unified._errors = unified._errors || {};
         unified._errors.contentPipeline =
-          err.message || "Content pipeline failed";
+          err.message || "Content pipeline (ApyHub) failed";
       }
     }
 
@@ -230,27 +200,21 @@ export async function POST(request) {
     // -----------------------------------------
     const technicalIssueCounts = unified.technicalSeo?.issueCounts || {};
 
-    const ibm = unified.content?.ibmNlu;
-    const mc = unified.content?.meaningCloud;
+    // 🔸 Simple heuristic from content length (no IBM / MeaningCloud)
+    let recommendationsCount = 0;
+    let contentOppsCount = 0;
 
-    // Very simple heuristics: number of extracted concepts/keywords/categories
-    const ibmKeywordsLen = Array.isArray(ibm?.keywords)
-      ? ibm.keywords.length
-      : 0;
-    const ibmConceptsLen = Array.isArray(ibm?.concepts)
-      ? ibm.concepts.length
-      : 0;
-    const mcConceptsLen = Array.isArray(mc?.concepts)
-      ? mc.concepts.length
-      : 0;
-    const mcCategoriesLen = Array.isArray(mc?.category_list || mc?.categories)
-      ? (mc.category_list || mc.categories).length
-      : 0;
+    const rawText = (unified.content?.rawText || "").trim();
 
-    const recommendationsCount =
-      ibmKeywordsLen + ibmConceptsLen + mcConceptsLen;
+    if (rawText) {
+      const wordCount = rawText.split(/\s+/).length;
 
-    const contentOppsCount = mcCategoriesLen;
+      // Rough: 1 "recommendation" per ~300 words (min 3)
+      recommendationsCount = Math.max(3, Math.round(wordCount / 300));
+
+      // Rough: 1 "content opportunity" per ~1200 words (min 1)
+      contentOppsCount = Math.max(1, Math.round(wordCount / 1200));
+    }
 
     unified.issues = {
       critical:

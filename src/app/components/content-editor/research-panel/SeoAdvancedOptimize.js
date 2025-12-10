@@ -1,4 +1,3 @@
-// components/content-editor/research-panel/SeoAdvancedOptimize.js
 "use client";
 
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -51,7 +50,7 @@ const STATUS_STYLES = {
   All: { dot: "bg-neutral-400" },
 };
 
-// ✅ highlight styles to mirror progress/badge colors in the Canvas
+// highlight styles to mirror progress/badge colors in the Canvas
 const HIGHLIGHT_CLASS_MAP = {
   Completed:
     "bg-emerald-200/60 text-emerald-900 ring-1 ring-emerald-400/40 rounded-[2px] px-0.5",
@@ -232,7 +231,7 @@ function PopoverSelect({ label, value, onChange, options }) {
       {open && (
         <div
           role="listbox"
-          className="absolute z-30 mt-1 w-[180px] rounded-lg border border-gray-200 bg-white p-1 shadow-lg
+          className="absolute z-30 mt-1 w-[180px] rounded-lg border border-gray-200 bg-white p-1shadow-lg
                      dark:border-[var(--border)] dark:bg-[var(--bg-panel)]"
         >
           {options.map((opt) => (
@@ -270,7 +269,6 @@ function KeywordRow({ item, onOpen, onPaste }) {
   const s = STATUS_STYLES[status];
   const pct = progressPct(item.used, item.recommended);
 
-  // Keyboard support for the row (Enter/Space to open)
   function handleKeyDown(e) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -412,17 +410,134 @@ function SourceResult({ url, title, snippet, phrase }) {
 }
 
 /* ===========================
+   Helper: derive keywords from seoData (DataForSEO / seoRows)
+   =========================== */
+
+function deriveKeywordsFromSeoData(seoData) {
+  if (!seoData) return [];
+
+  const out = [];
+  const seen = new Set();
+
+  const push = (
+    title,
+    {
+      used = 0,
+      recommended = 3,
+      sources = 0,
+      type = "All Topics",
+      links = [],
+    } = {}
+  ) => {
+    const key = String(title || "").toLowerCase().trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      id: key,
+      title,
+      used,
+      recommended,
+      sources,
+      type,
+      mine: used,
+      avg: Math.max(recommended, used || 1),
+      results: links.length || sources || 1,
+      links,
+    });
+  };
+
+  // Candidate rows from unified /api/seo payload
+  const rows = [];
+
+  if (Array.isArray(seoData.seoRows)) {
+    rows.push(...seoData.seoRows);
+  }
+
+  const dfs = seoData.dataForSeo;
+  if (dfs) {
+    if (Array.isArray(dfs.topKeywords)) {
+      rows.push(...dfs.topKeywords);
+    }
+    if (Array.isArray(dfs.keywordOpportunities)) {
+      rows.push(...dfs.keywordOpportunities);
+    }
+  }
+
+  rows.forEach((row) => {
+    const title =
+      row.keyword ||
+      row.key ||
+      row.term ||
+      row.query ||
+      row.search_query ||
+      row.topic ||
+      row.text;
+
+    if (!title) return;
+
+    const used =
+      (typeof row.currentUsage === "number" && row.currentUsage) ||
+      (typeof row.mine === "number" && row.mine) ||
+      0;
+
+    const recommended =
+      (typeof row.recommendedUsage === "number" && row.recommendedUsage) ||
+      (typeof row.recommended === "number" && row.recommended) ||
+      Math.max(used + 1, 2);
+
+    const sources =
+      row.sourcesCount ??
+      row.sourceDomains ??
+      row.domains ??
+      row.results ??
+      row.searchResultsCount ??
+      row.count ??
+      0;
+
+    const linksArray = Array.isArray(row.examples)
+      ? row.examples
+      : Array.isArray(row.urls)
+      ? row.urls
+      : Array.isArray(row.sampleUrls)
+      ? row.sampleUrls
+      : [];
+
+    const links =
+      typeof linksArray[0] === "string"
+        ? linksArray.map((u) => ({
+            url: u,
+            title: u,
+            snippet: "",
+          }))
+        : linksArray.map((ex) => ({
+            url: ex.url || ex.link || "",
+            title: ex.title || ex.url || title,
+            snippet: ex.snippet || ex.description || "",
+          }));
+
+    const type =
+      row.type ||
+      (title.split(/\s+/).length > 2 ? "Long Tail" : "All Topics");
+
+    push(title, { used, recommended, sources, type, links });
+  });
+
+  return out;
+}
+
+/* ===========================
    Main component
    =========================== */
 
 export default function SeoAdvancedOptimize({
   onPasteToEditor,
-  optimizeData, // from contenteditor.json OR optimize-dataset.json (via Research Panel)
-  currentPage, // optional
+  optimizeData, // kept for compatibility but no longer used as primary source
+  currentPage, // unused but kept for API compatibility
   basicsData, // optional
-  editorContent = "", // <-- live HTML from Canvas passed via Research Panel
+  editorContent = "", // live HTML from Canvas
+  seoData, // unified SEO data from /api/seo (psi + dataforseo + serper + authority)
 }) {
-  // KPI strip (static demo; you can make this live later)
+  // KPI strip (static demo for now)
   const KPIS = [
     { label: "HEADINGS", value: 2, delta: 29, up: false },
     { label: "LINKS", value: 5, delta: 29, up: false },
@@ -430,127 +545,20 @@ export default function SeoAdvancedOptimize({
   ];
 
   /* ===========================
-     Base dataset (from props)
+     Base dataset (from seoData only)
      =========================== */
   const keywords = useMemo(() => {
-    // Expect optimizeData?.keywords:
-    // [{ id, title, used, recommended, sources, type, mine, avg, results, links:[{url, title, snippet}] }]
-    if (Array.isArray(optimizeData?.keywords) && optimizeData.keywords.length) {
-      return optimizeData.keywords.slice(0, 999);
-    }
-    // Fallback demo rows
-    return [
-      {
-        id: "k1",
-        title: "Content Marketing",
-        used: 4,
-        recommended: 3,
-        sources: 15,
-        type: "Long Tail",
-        mine: 2,
-        avg: 5,
-        results: 3,
-        links: [
-          {
-            url: "https://www.greenleafinsights.com",
-            title: "How to start a blog in 10 steps: a beginner’s guide",
-            snippet:
-              "How to start a blog in 10 steps. This content marketing checklist covers planning, writing, and promotion for beginners.",
-          },
-          {
-            url: "https://www.greenleafinsights.com",
-            title: "How to Launch a Blog in 10 Easy Steps",
-            snippet:
-              "A practical guide to launch with content marketing tactics and early distribution.",
-          },
-          {
-            url: "https://www.greenleafinsights.com",
-            title: "Blogging Made Simple",
-            snippet:
-              "Blogging made simple with content marketing frameworks that scale.",
-          },
-          {
-            url: "https://www.greenleafinsights.com",
-            title: "10 Steps to Starting a Blog",
-            snippet:
-              "From niche selection to content marketing and analytics, this guide covers it all.",
-          },
-        ],
-      },
-      {
-        id: "k2",
-        title: "Strategies",
-        used: 2,
-        recommended: 4,
-        sources: 5,
-        type: "Long Tail",
-        mine: 2,
-        avg: 5,
-        results: 3,
-        links: [
-          {
-            url: "https://example.com",
-            title: "Marketing strategies that work",
-            snippet:
-              "Test different strategies and measure outcomes to find the best fit for your audience.",
-          },
-          {
-            url: "https://example.com",
-            title: "Strategy playbook",
-            snippet:
-              "This playbook lists winning strategies across paid, owned, and earned channels.",
-          },
-        ],
-      },
-      {
-        id: "k3",
-        title: "Link Readability",
-        used: 1,
-        recommended: 3,
-        sources: 15,
-        type: "All Topics",
-        mine: 2,
-        avg: 5,
-        results: 3,
-        links: [
-          {
-            url: "https://example.com",
-            title: "Readable links matter",
-            snippet:
-              "Improve link readability with concise anchor text and consistent patterns.",
-          },
-        ],
-      },
-      {
-        id: "k4",
-        title: "Title Readability",
-        used: 3,
-        recommended: 3,
-        sources: 15,
-        type: "Clusters",
-        mine: 2,
-        avg: 5,
-        results: 3,
-        links: [
-          {
-            url: "https://example.com",
-            title: "Crafting readable titles",
-            snippet:
-              "Boost CTR with title readability improvements and content structure.",
-          },
-        ],
-      },
-    ];
-  }, [optimizeData]);
+    // API-first: derive everything from /api/seo
+    const derived = deriveKeywordsFromSeoData(seoData || {});
+    return derived.slice(0, 999);
+  }, [seoData]);
 
   /* ===========================
      LIVE counts from Canvas
      =========================== */
 
-  // Normalize the editor HTML to plain text (lowercased)
   const plain = useMemo(() => normalizePlain(editorContent), [editorContent]);
 
-  // Count occurrences of each keyword title inside the plain text
   const liveCounts = useMemo(() => {
     if (!plain || !Array.isArray(keywords)) return {};
     const out = {};
@@ -561,7 +569,6 @@ export default function SeoAdvancedOptimize({
     return out;
   }, [plain, keywords]);
 
-  // Build the live keyword objects (override static "used" & update "mine")
   const liveKeywords = useMemo(() => {
     if (!Array.isArray(keywords)) return [];
     return keywords.map((k) => {
@@ -574,13 +581,13 @@ export default function SeoAdvancedOptimize({
     });
   }, [keywords, liveCounts]);
 
-  // ✅ Broadcast highlight rules to Canvas whenever live counts change
+  // broadcast highlight rules to Canvas whenever live counts change
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!Array.isArray(liveKeywords)) return;
 
     const rules = liveKeywords
-      .filter((k) => (k.used ?? 0) > 0) // only highlight phrases that exist in canvas
+      .filter((k) => (k.used ?? 0) > 0)
       .map((k) => {
         const status = deriveStatus(k.used, k.recommended);
         return {
@@ -591,16 +598,21 @@ export default function SeoAdvancedOptimize({
         };
       });
 
-    window.dispatchEvent(new CustomEvent("ce:highlightRules", { detail: rules }));
+    window.dispatchEvent(
+      new CustomEvent("ce:highlightRules", { detail: rules })
+    );
   }, [liveKeywords]);
 
-  // Keep drawer "selected" row in sync when counts change
+  // keep drawer "selected" row in sync when counts change
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   useEffect(() => {
     if (!drawerOpen || !selected) return;
     const fresher = liveKeywords.find((it) => it.id === selected.id);
-    if (fresher && (fresher.used !== selected.used || fresher.mine !== selected.mine)) {
+    if (
+      fresher &&
+      (fresher.used !== selected.used || fresher.mine !== selected.mine)
+    ) {
       setSelected(fresher);
     }
   }, [drawerOpen, selected, liveKeywords]);
@@ -610,9 +622,8 @@ export default function SeoAdvancedOptimize({
      =========================== */
 
   const [kwFilter, setKwFilter] = useState("");
-  // Default to All Topics and make it behave as "show everything"
-  const [typeFilter, setTypeFilter] = useState("All Topics"); // Long Tail | All Topics | Clusters
-  const [statusFilter, setStatusFilter] = useState("All"); // All | Completed | In Progress | Overuse | Topic Gap
+  const [typeFilter, setTypeFilter] = useState("All Topics");
+  const [statusFilter, setStatusFilter] = useState("All");
 
   const TYPE_OPTIONS = [
     { value: "Long Tail", label: "Long Tail" },
@@ -622,16 +633,23 @@ export default function SeoAdvancedOptimize({
   const STATUS_OPTIONS = [
     { value: "All", label: "All", dot: STATUS_STYLES.All.dot },
     { value: "Completed", label: "Completed", dot: STATUS_STYLES.Completed.dot },
-    { value: "In Progress", label: "In Progress", dot: STATUS_STYLES["In Progress"].dot },
+    {
+      value: "In Progress",
+      label: "In Progress",
+      dot: STATUS_STYLES["In Progress"].dot,
+    },
     { value: "Overuse", label: "Overuse", dot: STATUS_STYLES.Overuse.dot },
-    { value: "Topic Gap", label: "Topic Gap", dot: STATUS_STYLES["Topic Gap"].dot },
+    {
+      value: "Topic Gap",
+      label: "Topic Gap",
+      dot: STATUS_STYLES["Topic Gap"].dot,
+    },
   ];
 
   const visible = useMemo(() => {
     const q = kwFilter.trim().toLowerCase();
     return liveKeywords.filter((k) => {
       const okText = !q || k.title.toLowerCase().includes(q);
-      // "All Topics" shows ALL rows; otherwise exact match
       const okType =
         typeFilter === "All Topics" || !typeFilter || k.type === typeFilter;
       const status = deriveStatus(k.used, k.recommended);
@@ -746,7 +764,7 @@ export default function SeoAdvancedOptimize({
             results={selected.results}
           />
           <div className="mt-3 space-y-2">
-            {selected.links.map((l, i) => (
+            {(selected.links || []).map((l, i) => (
               <SourceResult
                 key={`${l.url}-${i}`}
                 url={l.url}

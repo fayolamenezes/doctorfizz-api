@@ -9,20 +9,17 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
   const [customKeyword, setCustomKeyword] = useState("");
   const [showSummary, setShowSummary] = useState(false);
 
-  // Start empty to avoid flicker; we’ll show skeletons while loading.
   const [suggestedKeywords, setSuggestedKeywords] = useState([]);
   const [isLoadingKeywords, setIsLoadingKeywords] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  // Inline “More → input”
   const [showInlineMoreInput, setShowInlineMoreInput] = useState(false);
   const moreInputRef = useRef(null);
 
-  // fixed-height shell (matches StepSlide2/3)
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
   const bottomBarRef = useRef(null);
-  const tailRef = useRef(null); // <-- anchor for auto-scroll-to-bottom
+  const tailRef = useRef(null);
   const [panelHeight, setPanelHeight] = useState(null);
 
   const lastSubmittedData = useRef(null);
@@ -38,8 +35,7 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
     } catch {
       s = s.replace(/^https?:\/\//, "").split("/")[0];
     }
-    s = s.replace(/^www\./, "");
-    return s;
+    return s.replace(/^www\./, "");
   }, []);
 
   const getStoredSite = useCallback(() => {
@@ -57,7 +53,8 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
         if (!raw) continue;
         try {
           const obj = JSON.parse(raw);
-          const val = obj?.website || obj?.site || obj?.domain || obj?.host || raw;
+          const val =
+            obj?.website || obj?.site || obj?.domain || obj?.host || raw;
           const host = normalizeHost(val);
           if (host) return host;
         } catch {
@@ -75,67 +72,65 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
       const fromParam = normalizeHost(params.get("site"));
       if (fromParam) return fromParam;
     } catch {}
-    const fromStorage = getStoredSite();
-    if (fromStorage) return fromStorage;
+    const stored = getStoredSite();
+    if (stored) return stored;
     return "example.com";
   }, [normalizeHost, getStoredSite]);
 
-  const extractKeywords = useCallback((row) => {
-    const out = [];
-    for (let i = 1; i <= 8; i++) {
-      const a = row?.[`Keyword${i}`];
-      const b = row?.[`NewOp_Keyword_${i}`];
-      const v = (a ?? b ?? "").toString().trim();
-      if (v) out.push(v);
-    }
-    const seen = new Set();
-    const deduped = out.filter((k) => {
-      const key = k.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    return deduped.slice(0, 8);
-  }, []);
-
-  /* ---------------- Load keywords for the chosen site ---------------- */
+  /* ---------------- Load keywords via Serper-backed API ---------------- */
   useEffect(() => {
-    let isMounted = true;
-    async function load() {
+    let active = true;
+
+    async function loadKeywords() {
       setIsLoadingKeywords(true);
       setLoadError(null);
+
       try {
-        const target = getTargetSite();
-        const res = await fetch("/data/seo-data.json", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to load seo-data.json (${res.status})`);
-        const rows = await res.json();
-        const host = normalizeHost(target);
-        const variants = host ? [host, `www.${host}`] : [];
-        theMatch: {
-          const match = rows.find((r) => {
-            const d1 = normalizeHost(r?.Domain);
-            const d2 = normalizeHost(r?.["Domain/Website"]);
-            return (d1 && variants.includes(d1)) || (d2 && variants.includes(d2));
-          });
-          const kws = extractKeywords(match || {});
-          const final =
-            (kws.length
-              ? kws
-              : [
-                  "Keyword 1",
-                  "Keyword 2",
-                  "Keyword 3",
-                  "Keyword 4",
-                  "Keyword 5",
-                  "Keyword 6",
-                  "Keyword 7",
-                  "Keyword 8",
-                ]).concat("More");
-          if (isMounted) setSuggestedKeywords(final);
-        }
+        const domain = getTargetSite();
+
+        const res = await fetch("/api/keywords/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain }),
+        });
+
+        if (!res.ok) throw new Error(`Keyword API failed (${res.status})`);
+
+        const data = await res.json();
+        let kw = Array.isArray(data.keywords) ? data.keywords : [];
+
+        // dedupe + trim to 8 suggestions
+        const seen = new Set();
+        kw = kw
+          .map((k) => (k || "").toString().trim())
+          .filter((k) => {
+            if (!k) return false;
+            const key = k.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .slice(0, 8);
+
+        const final =
+          kw.length > 0
+            ? kw.concat("More")
+            : [
+                "Keyword 1",
+                "Keyword 2",
+                "Keyword 3",
+                "Keyword 4",
+                "Keyword 5",
+                "Keyword 6",
+                "Keyword 7",
+                "Keyword 8",
+                "More",
+              ];
+
+        if (active) setSuggestedKeywords(final);
       } catch (err) {
-        if (isMounted) {
-          setLoadError(err?.message || "Failed to load keywords");
+        if (active) {
+          setLoadError(err?.message || "Failed to fetch keywords");
           setSuggestedKeywords([
             "Keyword 1",
             "Keyword 2",
@@ -149,14 +144,15 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
           ]);
         }
       } finally {
-        if (isMounted) setIsLoadingKeywords(false);
+        if (active) setIsLoadingKeywords(false);
       }
     }
-    load();
+
+    loadKeywords();
     return () => {
-      isMounted = false;
+      active = false;
     };
-  }, [getTargetSite, normalizeHost, extractKeywords]);
+  }, [getTargetSite]);
 
   /* ---------------- Fixed panel height ---------------- */
   const recomputePanelHeight = () => {
@@ -187,13 +183,17 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
   /* ---------------- Keyword handlers ---------------- */
   const handleKeywordToggle = (keyword) => {
     if (isLoadingKeywords && keyword === "More") return;
+
     if (keyword === "More") {
       setShowInlineMoreInput(true);
       setTimeout(() => moreInputRef.current?.focus(), 50);
       return;
     }
+
     setSelectedKeywords((prev) =>
-      prev.includes(keyword) ? prev.filter((k) => k !== keyword) : [...prev, keyword]
+      prev.includes(keyword)
+        ? prev.filter((k) => k !== keyword)
+        : [...prev, keyword]
     );
   };
 
@@ -226,10 +226,12 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
     if (selectedKeywords.length > 0) {
       const payload = { keywords: selectedKeywords };
       const curr = JSON.stringify(payload);
+
       if (curr !== JSON.stringify(lastSubmittedData.current)) {
         lastSubmittedData.current = payload;
         onKeywordSubmit?.(payload);
       }
+
       setShowSummary(true);
     } else {
       setShowSummary(false);
@@ -237,14 +239,22 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
     }
   }, [selectedKeywords, onKeywordSubmit]);
 
-  /* ---------------- Auto-scroll to bottom (align with StepSlide2/3 behavior) ---------------- */
+  /* ---------------- Auto-scroll to bottom ---------------- */
   useEffect(() => {
     if (tailRef.current) {
       requestAnimationFrame(() => {
-        tailRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        tailRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "end",
+        });
       });
     }
-  }, [showSummary, selectedKeywords.length, showInlineMoreInput, isLoadingKeywords]);
+  }, [
+    showSummary,
+    selectedKeywords.length,
+    showInlineMoreInput,
+    isLoadingKeywords,
+  ]);
 
   /* ---------------- UI ---------------- */
   return (
@@ -254,9 +264,11 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
         <div
           ref={panelRef}
           className="mx-auto w-full max-w-[1120px] rounded-2xl bg-transparent box-border"
-          style={{ padding: "0px 24px", height: panelHeight ? `${panelHeight}px` : "auto" }}
+          style={{
+            padding: "0px 24px",
+            height: panelHeight ? `${panelHeight}px` : "auto",
+          }}
         >
-          {/* hide inner scrollbar */}
           <style jsx>{`
             .inner-scroll {
               scrollbar-width: none;
@@ -290,19 +302,24 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
             }
           `}</style>
 
-          <div ref={scrollRef} className="inner-scroll h-full w-full overflow-y-auto">
+          <div
+            ref={scrollRef}
+            className="inner-scroll h-full w-full overflow-y-auto"
+          >
             <div className="flex flex-col items-start text-start gap-5 sm:gap-6 md:gap-8 max-w-[820px] mx-auto">
               {/* Step label */}
               <div className="text-[11px] sm:text-[12px] md:text-[13px] text-[var(--muted)] font-medium">
                 Step - 4
               </div>
+
               <div className="spacer-line w-[80%] self-start h-[1px] bg-[#d45427] mt-[-1%]" />
 
-              {/* Heading + copy */}
+              {/* Heading */}
               <div className="space-y-2.5 sm:space-y-3 max-w-[640px]">
                 <h1 className="text-[16px] sm:text-[18px] md:text-[22px] lg:text-[26px] font-bold text-[var(--text)]">
                   Unlock high-impact keywords.
                 </h1>
+
                 <p className="text-[13px] sm:text-[14px] md:text-[15px] text-[var(--muted)] leading-relaxed">
                   {isLoadingKeywords
                     ? "Scanning your site…"
@@ -312,11 +329,10 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
                 </p>
               </div>
 
-              {/* Keyword picker area — suggestions + inline More-input */}
+              {/* Keyword suggestions */}
               <div className="w-full max-w-[880px] space-y-5 sm:space-y-6">
-                {/* Suggested pills */}
                 <div className="flex flex-wrap justify-start gap-2 sm:gap-2.5 md:gap-3 -mx-1">
-                  {/* Loading skeletons */}
+                  {/* Skeletons */}
                   {isLoadingKeywords &&
                     suggestedKeywords.length === 0 &&
                     Array.from({ length: 8 }).map((_, i) => (
@@ -328,11 +344,10 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
                     suggestedKeywords.map((keyword) => {
                       const isSelected = selectedKeywords.includes(keyword);
 
-                      // Render “More” as inline input when toggled
                       if (keyword === "More" && showInlineMoreInput) {
                         return (
                           <div
-                            key="more-inline-input"
+                            key="more-input"
                             className="flex flex-wrap items-center gap-2 mx-1 w-full sm:w-auto"
                           >
                             <input
@@ -340,7 +355,9 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
                               type="text"
                               placeholder="Add your own keyword"
                               value={customKeyword}
-                              onChange={(e) => setCustomKeyword(e.target.value)}
+                              onChange={(e) =>
+                                setCustomKeyword(e.target.value)
+                              }
                               onKeyDown={handleKeyDown}
                               className="w-full sm:w-[220px] px-3 sm:px-4 py-2 border border-[#d45427] rounded-xl bg-[var(--input)] text-[12px] sm:text-[13px] md:text-[14px] text-[var(--text)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[#d45427]"
                             />
@@ -357,27 +374,29 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
                         );
                       }
 
-                      // Single-chip behavior: toggle select; show ✓; on hover over selected, swap to X
-                      const selected = isSelected;
                       return (
                         <button
                           key={keyword}
                           type="button"
-                          aria-pressed={selected}
+                          aria-pressed={isSelected}
                           onClick={() => handleKeywordToggle(keyword)}
                           className={`keyword-chip group inline-flex items-center justify-between mx-1 px-3.5 sm:px-4 py-2.5 min-h-[34px] sm:min-h-[36px] text-[11px] sm:text-[12px] md:text-[13px] leading-normal ${
-                            selected ? "active" : ""
+                            isSelected ? "active" : ""
                           }`}
                         >
                           <span className="truncate max-w-[150px] sm:max-w-[180px] md:max-w-none">
                             {keyword}
                           </span>
 
-                          {/* Icon logic */}
                           {keyword !== "More" && (
                             <>
-                              {!selected && <Plus size={16} className="ml-1 flex-shrink-0" />}
-                              {selected && (
+                              {!isSelected && (
+                                <Plus
+                                  size={16}
+                                  className="ml-1 flex-shrink-0"
+                                />
+                              )}
+                              {isSelected && (
                                 <span className="relative ml-1 inline-flex w-4 h-4 items-center justify-center flex-shrink-0">
                                   <Check
                                     size={16}
@@ -399,7 +418,7 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
                 </div>
               </div>
 
-              {/* System message / CTA (after at least one selection) */}
+              {/* Summary */}
               {showSummary && (
                 <div className="max-w=[640px] text-left self-start mt-5 sm:mt-6">
                   <h3 className="text-[15px] sm:text-[16px] md:text-[18px] font-bold text=[var(--text)] mb-2.5 sm:mb-3">
@@ -414,7 +433,7 @@ export default function StepSlide4({ onNext, onBack, onKeywordSubmit }) {
               )}
 
               <div className="h-2" />
-              <div ref={tailRef} /> {/* <-- tail element to anchor auto-scroll */}
+              <div ref={tailRef} />
             </div>
           </div>
         </div>

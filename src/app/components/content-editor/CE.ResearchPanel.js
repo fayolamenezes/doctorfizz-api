@@ -91,6 +91,19 @@ export default function CEResearchPanel({
   onFix,
   onPasteToEditor,
   editorContent = "",
+  // Unified live SEO data from /api/seo (injected by ContentEditor)
+  seoData,
+  seoLoading,
+  seoError,
+  /**
+   * When true, enable JSON/demo datasets:
+   *  - /data/optimize-dataset.json
+   *  - /data/links-dataset.json
+   *  - legacy page-based optimize/links data
+   *
+   * In production, this should be false so panels rely on seoData only.
+   */
+  demoMode = false,
 }) {
   const [phase, setPhase] = useState("idle"); // idle | searching | results
   const [tab, setTab] = useState("opt"); // opt | links | faqs | research
@@ -99,32 +112,6 @@ export default function CEResearchPanel({
   const [cfgLoading, setCfgLoading] = useState(false);
   const [cfgError, setCfgError] = useState(null);
   const [pages, setPages] = useState([]);
-
-  // Fetch /data/contenteditor.json (read-only)
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setCfgLoading(true);
-        setCfgError(null);
-        const res = await fetch("/data/contenteditor.json", {
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!mounted) return;
-        setPages(pickPagesFromConfig(json));
-      } catch (e) {
-        if (!mounted) return;
-        setCfgError(String(e));
-      } finally {
-        if (mounted) setCfgLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   // Pick current page:
   // 1) Try to infer from editorContent (actual HTML in the editor)
@@ -293,6 +280,14 @@ export default function CEResearchPanel({
 
   // Load optimize dataset from /public/data/optimize-dataset.json
   useEffect(() => {
+    if (!demoMode) {
+      // In non-demo mode, ensure we are not "loading" and dataset is cleared
+      setOptLoading(false);
+      setOptError(null);
+      setOptDataset(null);
+      return;
+    }
+
     let mounted = true;
     (async () => {
       try {
@@ -315,17 +310,18 @@ export default function CEResearchPanel({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [demoMode]);
 
   // Track saved domain (from Step1Slide1) and choose active domain block from dataset
   useEffect(() => {
+    if (!demoMode) return;
     // Read once on mount and also whenever we return to the Optimize tab
     const site = getSavedDomain();
     setActiveDomainKey(site || "");
-  }, [tab]);
+  }, [tab, demoMode]);
 
   useEffect(() => {
-    if (!optDataset || !activeDomainKey) {
+    if (!demoMode || !optDataset || !activeDomainKey) {
       setOptActiveDomain(null);
       return;
     }
@@ -335,14 +331,14 @@ export default function CEResearchPanel({
         )
       : null;
     setOptActiveDomain(dom || null);
-  }, [optDataset, activeDomainKey]);
+  }, [optDataset, activeDomainKey, demoMode]);
 
   // Choose a page inside the active domain based on:
   //  1) current page's optPageId/id ↔ optimize page's editorKey/id
   //  2) fallback to query (title/url/id)
   //  3) fallback to first page in domain
   useEffect(() => {
-    if (!optActiveDomain) {
+    if (!demoMode || !optActiveDomain) {
       setOptActivePage(null);
       return;
     }
@@ -393,10 +389,10 @@ export default function CEResearchPanel({
 
     // 3) Final safety net: first page in the domain
     setOptActivePage(next || domPages[0] || null);
-  }, [optActiveDomain, query, resolvedPage, optPageId, activeDomainKey]);
+  }, [optActiveDomain, query, resolvedPage, optPageId, activeDomainKey, demoMode]);
 
   // Compute optimizeData to pass into <SeoAdvancedOptimize />
-  // Priority:
+  // Priority (demo mode only):
   //  1) If optimize dataset found a page => use its keywords/kpis.
   //  2) Else fallback to contenteditor.json's advanced.optimize (legacy).
   const optimizeDataFromDomain = useMemo(() => {
@@ -406,7 +402,9 @@ export default function CEResearchPanel({
   }, [optActivePage]);
 
   const optimizeDataFallback = resolvedPage?.advanced?.optimize || null;
-  const optimizeData = optimizeDataFromDomain || optimizeDataFallback;
+  const optimizeData = demoMode
+    ? optimizeDataFromDomain || optimizeDataFallback
+    : null;
 
   // -------- Links dataset (page-specific, domain-aware) --------
   const [linksLoading, setLinksLoading] = useState(false);
@@ -417,6 +415,13 @@ export default function CEResearchPanel({
 
   // Load links dataset from /public/data/links-dataset.json
   useEffect(() => {
+    if (!demoMode) {
+      setLinksLoading(false);
+      setLinksError(null);
+      setLinksDataset(null);
+      return;
+    }
+
     let mounted = true;
     (async () => {
       try {
@@ -439,11 +444,11 @@ export default function CEResearchPanel({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [demoMode]);
 
   // Choose active domain in links dataset using the same activeDomainKey
   useEffect(() => {
-    if (!linksDataset || !activeDomainKey) {
+    if (!demoMode || !linksDataset || !activeDomainKey) {
       setLinksActiveDomain(null);
       return;
     }
@@ -453,11 +458,11 @@ export default function CEResearchPanel({
         )
       : null;
     setLinksActiveDomain(dom || null);
-  }, [linksDataset, activeDomainKey]);
+  }, [linksDataset, activeDomainKey, demoMode]);
 
   // Choose a page in the links dataset for the current domain
   useEffect(() => {
-    if (!linksActiveDomain) {
+    if (!demoMode || !linksActiveDomain) {
       setLinksActivePage(null);
       return;
     }
@@ -500,23 +505,25 @@ export default function CEResearchPanel({
     }
 
     setLinksActivePage(next || domPages[0] || null);
-  }, [linksActiveDomain, query, resolvedPage, optPageId]);
+  }, [linksActiveDomain, query, resolvedPage, optPageId, demoMode]);
 
-  // Final links data (dataset → fallback to legacy)
+  // Final links data (dataset → fallback to legacy) in demo mode only
   const linksExternalFromDataset =
     linksActivePage?.linksTab?.external || [];
   const linksInternalFromDataset =
     linksActivePage?.linksTab?.internal || [];
 
-  const linksExternal =
-    linksExternalFromDataset.length > 0
-      ? linksExternalFromDataset
-      : legacyLinksExternal;
+  const linksExternal = demoMode
+    ? (linksExternalFromDataset.length > 0
+        ? linksExternalFromDataset
+        : legacyLinksExternal)
+    : null;
 
-  const linksInternal =
-    linksInternalFromDataset.length > 0
-      ? linksInternalFromDataset
-      : legacyLinksInternal;
+  const linksInternal = demoMode
+    ? (linksInternalFromDataset.length > 0
+        ? linksInternalFromDataset
+        : legacyLinksInternal)
+    : null;
 
   // -------- Access gate (same as before) --------
   const canAccess =
@@ -571,6 +578,9 @@ export default function CEResearchPanel({
         onPasteToEditor={onPasteToEditor}
         currentPage={resolvedPage}
         detailsData={detailsData}
+        seoData={seoData}
+        seoLoading={seoLoading}
+        seoError={seoError}
       />
     );
   }
@@ -636,40 +646,50 @@ export default function CEResearchPanel({
       )}
 
       {/* Loading/Error states for config/optimize/links datasets */}
-      {canAccess && (cfgLoading || optLoading || linksLoading) && (
-        <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-[12px] text-[var(--muted)]">
-          Loading research…
-        </div>
-      )}
-      {canAccess && (cfgError || optError || linksError) && (
-        <div className="rounded-xl border border-rose-300 bg-rose-50/70 dark:bg-rose-950/40 px-3 py-2 text-[12px] text-rose-800 dark:text-rose-200">
-          Failed to load data: {cfgError || optError || linksError}
-        </div>
-      )}
+      {canAccess &&
+        (cfgLoading || (demoMode && (optLoading || linksLoading))) && (
+          <div className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-[12px] text-[var(--muted)]">
+            Loading research…
+          </div>
+        )}
+      {canAccess &&
+        (cfgError ||
+          (demoMode && (optError || linksError))) && (
+          <div className="rounded-xl border border-rose-300 bg-rose-50/70 dark:bg-rose-950/40 px-3 py-2 text-[12px] text-rose-800 dark:text-rose-200">
+            Failed to load data: {cfgError || optError || linksError}
+          </div>
+        )}
 
       {/* Advanced panels */}
       {canAccess &&
         !cfgLoading &&
-        !optLoading &&
-        !linksLoading &&
-        !(cfgError || optError || linksError) && (
+        (!demoMode || (!optLoading && !linksLoading)) &&
+        !(cfgError || (demoMode && (optError || linksError))) && (
           <>
             {tab === "opt" && (
               <SeoAdvancedOptimize
                 onPasteToEditor={onPasteToEditor}
+                // In production, this will be null and the panel uses seoData only.
                 optimizeData={optimizeData}
                 currentPage={resolvedPage}
                 basicsData={basicsData}
                 editorContent={editorContent}
+                seoData={seoData}
+                seoLoading={seoLoading}
+                seoError={seoError}
               />
             )}
 
             {tab === "links" && (
               <SeoAdvancedLinks
                 onPasteToEditor={onPasteToEditor}
+                // In production, these will be null and the panel uses seoData only.
                 linksExternal={linksExternal}
                 linksInternal={linksInternal}
                 currentPage={resolvedPage}
+                seoData={seoData}
+                seoLoading={seoLoading}
+                seoError={seoError}
               />
             )}
 
@@ -678,6 +698,9 @@ export default function CEResearchPanel({
                 onPasteToEditor={onPasteToEditor}
                 faqs={faqs}
                 currentPage={resolvedPage}
+                seoData={seoData}
+                seoLoading={seoLoading}
+                seoError={seoError}
               />
             )}
 
@@ -694,6 +717,9 @@ export default function CEResearchPanel({
                 optimizeData={optimizeData}
                 linksExternal={linksExternal}
                 faqs={faqs}
+                seoData={seoData}
+                seoLoading={seoLoading}
+                seoError={seoError}
               />
             )}
           </>

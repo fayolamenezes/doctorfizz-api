@@ -210,6 +210,11 @@ export default function ContentEditor({ data, onBackToDashboard }) {
     lsiKeywords: 0,
   }));
 
+  // Unified SEO data from /api/seo for this document
+  const [seo, setSeo] = useState(null);
+  const [seoLoading, setSeoLoading] = useState(false);
+  const [seoError, setSeoError] = useState("");
+
   /* persistence + fresh-new guard */
   const restoredRef = useRef(false);
   const newDocRef = useRef(false);
@@ -228,6 +233,78 @@ export default function ContentEditor({ data, onBackToDashboard }) {
       // Ignore storage errors (e.g., SSR or private mode)
     }
   }, [pageDomain]);
+
+  // ------------------------------------------------------------------
+  // Resolve the canonical URL for this page and fetch unified SEO data
+  const seoUrl = useMemo(() => {
+    if (!pageDomain) return null;
+
+    // Prefer explicit URL from data if provided
+    if (data?.url && typeof data.url === "string") {
+      return data.url;
+    }
+
+    // If a slug is available, build a page-level URL
+    if (data?.slug && typeof data.slug === "string") {
+      const cleanedSlug = data.slug.replace(/^\/+/, "");
+      return `https://${pageDomain}/${cleanedSlug}`;
+    }
+
+    // Fallback: just the domain root
+    return `https://${pageDomain}`;
+  }, [pageDomain, data?.url, data?.slug]);
+
+  useEffect(() => {
+    if (!seoUrl) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setSeoLoading(true);
+        setSeoError("");
+
+        const payload = {
+          url: seoUrl,
+          keyword: PRIMARY_KEYWORD || seoUrl,
+          countryCode: "in",
+          languageCode: "en",
+          depth: 10,
+          providers: ["psi", "authority", "dataforseo", "content", "serper"],
+        };
+
+        console.log("[ContentEditor] Calling /api/seo with payload:", payload);
+
+        const res = await fetch("/api/seo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to load /api/seo: ${res.status}`);
+        }
+
+        const json = await res.json();
+        console.log("[ContentEditor] /api/seo response:", json);
+
+        if (alive) setSeo(json);
+      } catch (e) {
+        console.error("[ContentEditor] Error while fetching /api/seo:", e);
+        if (alive) setSeoError(e.message || "Failed to load SEO data");
+      } finally {
+        if (alive) setSeoLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [seoUrl, PRIMARY_KEYWORD]);
+
+  useEffect(() => {
+    console.log("[ContentEditor] seo", { seo, seoLoading, seoError });
+  }, [seo, seoLoading, seoError]);
 
   // Track previous incoming data.title to avoid clobbering user edits
   const prevDataTitleRef = useRef(data?.title);
@@ -373,7 +450,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   }, [resetToNewDocument]);
 
   /*
-   * Whenever the parent data/page key changes (i.e. a different page is opened),
+   * Whenever the parent data/page key changes, (i.e. a different page is opened),
    * force a remount of the Content Area (and thus the Research panel) and
    * broadcast a reset to clear any persisted research state.
    */
@@ -597,6 +674,10 @@ export default function ContentEditor({ data, onBackToDashboard }) {
           optPageId={pageConfig?.optPageId}
           // New: pass docId down so Canvas/autosave can be per-document
           docId={docId}
+          // New: unified SEO data for this page from /api/seo
+          seoData={seo}
+          seoLoading={seoLoading}
+          seoError={seoError}
         />
 
         {process.env.NODE_ENV !== "production" && configError && (
@@ -682,6 +763,10 @@ export default function ContentEditor({ data, onBackToDashboard }) {
               /* Pass the resolved page and optPageId to prevent first-page fallback on mobile */
               page={pageConfig}
               optPageId={pageConfig?.optPageId}
+              // Unified SEO data for this page from /api/seo (mobile research panel)
+              seoData={seo}
+              seoLoading={seoLoading}
+              seoError={seoError}
             />
           </div>
         )}
