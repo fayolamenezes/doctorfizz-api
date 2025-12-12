@@ -35,6 +35,36 @@ export default function Step5Slide2({
   const [loading, setLoading] = useState(false);
   const [activeSection, setActiveSection] = useState(null); // 'business' | 'language' | 'keywords' | 'competition'
 
+  // ✅ loader text + progress (no numbers)
+  const [loadingDots, setLoadingDots] = useState(".");
+  const [progressPct, setProgressPct] = useState(0);
+
+  // ✅ NEW: realtime SSE status text (Option B)
+  const [statusText, setStatusText] = useState("");
+
+  // ✅ fake progress interval ref (used on click so it ALWAYS moves 0→92)
+  const fakeProgressRef = useRef(null);
+
+  const startFakeProgressTo92 = () => {
+    setProgressPct(0);
+    if (fakeProgressRef.current) clearInterval(fakeProgressRef.current);
+
+    // 0 -> 92 in ~25s
+    fakeProgressRef.current = setInterval(() => {
+      setProgressPct((p) => {
+        if (p >= 92) return 92;
+        return Math.min(92, p + 0.368);
+      });
+    }, 100);
+  };
+
+  const stopFakeProgress = () => {
+    if (fakeProgressRef.current) {
+      clearInterval(fakeProgressRef.current);
+      fakeProgressRef.current = null;
+    }
+  };
+
   // ----- Fixed-height shell (consistent with other slides) ----------------------
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
@@ -67,6 +97,21 @@ export default function Step5Slide2({
   useEffect(() => {
     recomputePanelHeight();
   }, [loading]);
+
+  // ✅ classic dot animation: . .. ... .
+  useEffect(() => {
+    if (!loading) return;
+    setLoadingDots(".");
+    const id = setInterval(() => {
+      setLoadingDots((d) => (d.length >= 3 ? "." : d + "."));
+    }, 450);
+    return () => clearInterval(id);
+  }, [loading]);
+
+  // ✅ cleanup fake progress if component unmounts while loading
+  useEffect(() => {
+    return () => stopFakeProgress();
+  }, []);
 
   // ----- Data shaping -----------------------------------------------------------
   const industry =
@@ -217,10 +262,122 @@ export default function Step5Slide2({
     return "example.com";
   };
 
+  // ✅ Existing helper kept (not used in SSE mode, but preserved)
+  const readJsonWithProgress = async (res) => {
+    if (!res.body || typeof res.body.getReader !== "function") {
+      const j = await res.json();
+      return j;
+    }
+
+    const total = Number(res.headers.get("Content-Length")) || 0;
+
+    if (total > 0) {
+      stopFakeProgress();
+      setProgressPct(0);
+    }
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      received += value?.byteLength ?? 0;
+
+      if (total > 0) {
+        const pct = Math.min(100, (received / total) * 100);
+        setProgressPct(pct);
+      }
+    }
+
+    const blob = new Blob(chunks, { type: "application/json" });
+    return await blob.text().then((t) => JSON.parse(t));
+  };
+
+  // ✅ NEW: SSE reader for Option B (reads status + final done payload)
+  const readSseDone = async (res) => {
+    if (!res.body || typeof res.body.getReader !== "function") {
+      // Fallback (shouldn't happen in modern browsers)
+      return await res.json();
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    const parseEventBlock = (block) => {
+      const lines = block.split("\n");
+      let eventName = "message";
+      let dataStr = "";
+
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          eventName = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          const part = line.slice(5).trim();
+          dataStr += (dataStr ? "\n" : "") + part;
+        }
+      }
+
+      if (!dataStr) return { eventName, data: null };
+
+      try {
+        return { eventName, data: JSON.parse(dataStr) };
+      } catch {
+        return { eventName, data: dataStr };
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by a blank line
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+
+        const { eventName, data } = parseEventBlock(trimmed);
+
+        if (eventName === "status") {
+          const msg = data?.message;
+          if (typeof msg === "string" && msg) setStatusText(msg);
+        }
+
+        if (eventName === "fatal") {
+          const msg =
+            (typeof data?.details === "string" && data.details) ||
+            (typeof data?.error === "string" && data.error) ||
+            "Internal server error";
+          throw new Error(msg);
+        }
+
+        if (eventName === "done") {
+          // route.js sends: { unified }
+          return data?.unified ?? data;
+        }
+      }
+    }
+
+    throw new Error("Stream ended before completion");
+  };
+
   const handleDashboard = async () => {
     if (loading) return;
     setLoading(true);
+    setProgressPct(0);
     scrollLoaderIntoView();
+
+    // ✅ Start fake progress immediately on click
+    startFakeProgressTo92();
 
     try {
       const domain = resolveDomainFromContext();
@@ -232,6 +389,9 @@ export default function Step5Slide2({
         const first = keywords[0];
         if (typeof first === "string") keyword = first;
       }
+
+      // Show initial “real inputs” immediately
+      setStatusText(`Starting… URL: ${domain} • Keyword: ${keyword}`);
 
       const payload = {
         url,
@@ -245,7 +405,11 @@ export default function Step5Slide2({
 
       const res = await fetch("/api/seo", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // ✅ Ask for SSE (Option B)
+          Accept: "text/event-stream",
+        },
         body: JSON.stringify(payload),
       });
 
@@ -253,7 +417,13 @@ export default function Step5Slide2({
         throw new Error(`SEO API failed: ${res.status}`);
       }
 
-      const json = await res.json();
+      // ✅ Read SSE status events + final unified JSON
+      const json = await readSseDone(res);
+
+      // End: stop fake, set 100
+      stopFakeProgress();
+      setProgressPct(100);
+      setStatusText("Finalizing…");
 
       // Stash for Dashboard to read & skip its own fetch
       if (typeof window !== "undefined") {
@@ -261,16 +431,23 @@ export default function Step5Slide2({
         window.dispatchEvent(new Event("dashboard:open"));
       }
 
-      onDashboard?.();
+      // slight delay so 100% is visible
+      setTimeout(() => onDashboard?.(), 250);
     } catch (e) {
       console.error("[Step5Slide2] Failed to prefetch SEO:", e);
+
+      stopFakeProgress();
+      setProgressPct(100);
+      setStatusText("Something went wrong. Opening dashboard…");
+
       // Fallback: still open dashboard (it will fetch itself like before)
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("dashboard:open"));
       }
       onDashboard?.();
     } finally {
-      setLoading(false);
+      stopFakeProgress();
+      setTimeout(() => setLoading(false), 300);
     }
   };
 
@@ -364,21 +541,32 @@ export default function Step5Slide2({
         .layer-back { opacity:.92; animation: drift 6.8s linear infinite; }
         .layer-front { opacity:.98; animation: drift 5.6s linear infinite; }
 
-        .progress-wrap { position:relative; height:10px; width:100%; border-radius:9999px; background: var(--border); overflow:hidden; }
-        .progress-track {
-          position:absolute; inset:0;
+        /* ✅ progress bar (no infinite animation) */
+        .progress-wrap {
+          position:relative;
+          height:10px;
+          width:100%;
+          border-radius:9999px;
+          background: var(--border);
+          overflow:hidden;
+        }
+        .progress-fill {
+          position:absolute;
+          left:0; top:0; bottom:0;
+          width: 0%;
           background: linear-gradient(90deg, #d45427 0%, #ffa615 100%);
-          transform: translateX(-60%);
-          animation: slide 2.2s cubic-bezier(.37,.01,.22,1) infinite;
+          transition: width 120ms linear;
         }
-        @keyframes slide { 0% { transform: translateX(-60%); } 50% { transform: translateX(10%); } 100% { transform: translateX(120%); } }
         .progress-shine {
-          position:absolute; top:0; bottom:0; width:30%;
-          background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.65) 50%, transparent 100%);
+          position:absolute;
+          top:0; bottom:0;
+          width:30%;
+          background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%);
           filter: blur(8px);
-          animation: shine 1.6s linear infinite;
+          transform: translateX(-120%);
+          opacity: 0;
+          pointer-events:none;
         }
-        @keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
       `}</style>
 
       {/* ---------------- Fixed-height content area ---------------- */}
@@ -513,8 +701,20 @@ export default function Step5Slide2({
                     Preparing your <span className="font-semibold">Dashboard</span>.
                   </p>
 
+                  {/* Loading... line (above loader) */}
+                  <p className="mt-3 text-[12px] sm:text-[13px] md:text-[14px] text-[var(--muted)] font-medium">
+                    Loading{loadingDots}
+                  </p>
+
+                  {/* ✅ NEW: realtime “what’s being fetched” (a little margin from Loading...) */}
+                  {!!statusText && (
+                    <p className="mt-2 text-[12px] sm:text-[13px] md:text-[14px] text-[var(--muted)]">
+                      {statusText}
+                    </p>
+                  )}
+
                   {/* Wave */}
-                  <div className="mt-5 sm:mt-6 scale-95 sm:scale-100">
+                  <div className="mt-4 sm:mt-5 scale-95 sm:scale-100">
                     <div className="wave-loader">
                       <div className="shine" />
                       <div className="layer layer-back">
@@ -577,10 +777,13 @@ export default function Step5Slide2({
                     </div>
                   </div>
 
-                  {/* Progress */}
+                  {/* Progress (0–100) — no numbers */}
                   <div className="mt-5 sm:mt-6 w-full max-w-[320px] sm:max-w-[420px] md:max-w-[560px]">
                     <div className="progress-wrap">
-                      <div className="progress-track" />
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }}
+                      />
                       <div className="progress-shine" />
                     </div>
                   </div>

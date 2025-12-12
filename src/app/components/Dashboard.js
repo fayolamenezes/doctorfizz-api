@@ -519,10 +519,10 @@ export default function Dashboard({ onOpenContentEditor }) {
       industryAvgDR:
         typeof effectiveDomainRating === "number"
           ? Math.max(20, Math.min(80, effectiveDomainRating * 1.1))
-          : 45.2,
-      trustBar: 72,
-      medQuality: 20,
-      lowQuality: 8,
+          : 0,
+      trustBar: 0,
+      medQuality: 0,
+      lowQuality: 0,
       referringDomains:
         typeof backlinksSummary.referring_domains === "number"
           ? backlinksSummary.referring_domains
@@ -541,7 +541,7 @@ export default function Dashboard({ onOpenContentEditor }) {
                 backlinksSummary.referring_pages) *
                 100
             )
-          : 78,
+          : 0,
       nofollowPct:
         typeof backlinksSummary.referring_pages === "number" &&
         typeof backlinksSummary.referring_pages_nofollow === "number" &&
@@ -556,7 +556,7 @@ export default function Dashboard({ onOpenContentEditor }) {
                     100
                 )
             )
-          : 22,
+          : 0,
 
       // Technical
       siteHealth:
@@ -568,12 +568,12 @@ export default function Dashboard({ onOpenContentEditor }) {
       pagesScanned:
         typeof backlinksSummary.crawled_pages === "number"
           ? backlinksSummary.crawled_pages
-          : 2100,
-      redirects: 89,
+          : 0,
+      redirects: 0,
       broken:
         typeof backlinksSummary.broken_pages === "number"
           ? backlinksSummary.broken_pages
-          : 15,
+          : 0,
       cwvScores: {
         LCP_Score:
           typeof vitals.lcp === "number" ? vitals.lcp / 1000 : undefined,
@@ -599,23 +599,23 @@ export default function Dashboard({ onOpenContentEditor }) {
 
       // Performance (still demo for now)
       organicTraffic: {
-        monthly: 38600,
-        growth: 23,
+        monthly: 0,
+        growth: 0,
       },
       organicKeywords: {
-        total: 90600,
-        top3: 12300,
-        top10: 24800,
-        top100: 53600,
+        total: 0,
+        top3: 0,
+        top10: 0,
+        top100: 0,
       },
 
       // Leads (demo)
       leads: {
-        monthly: 887,
-        goal: 1500,
-        contactForm: 560,
-        newsletter: 327,
-        growth: 12.3,
+        monthly: 0,
+        goal: 0,
+        contactForm: 0,
+        newsletter: 0,
+        growth: 0,
       },
 
       // AI SEO Matrix – prefers backend (seo.dataForSeo.aiTools) with safe fallbacks
@@ -641,35 +641,35 @@ export default function Dashboard({ onOpenContentEditor }) {
         coveragePercent:
           typeof serpFeatures.coveragePercent === "number"
             ? serpFeatures.coveragePercent
-            : 45,
+            : 0,
         featuredSnippets:
           typeof serpFeatures.featuredSnippets === "number"
             ? serpFeatures.featuredSnippets
-            : 23,
+            : 0,
         peopleAlsoAsk:
           typeof serpFeatures.peopleAlsoAsk === "number"
             ? serpFeatures.peopleAlsoAsk
-            : 156,
+            : 0,
         imagePack:
           typeof serpFeatures.imagePack === "number"
             ? serpFeatures.imagePack
-            : 89,
+            : 0,
         videoResults:
           typeof serpFeatures.videoResults === "number"
             ? serpFeatures.videoResults
-            : 34,
+            : 0,
         knowledgePanel:
           typeof serpFeatures.knowledgePanel === "number"
             ? serpFeatures.knowledgePanel
-            : 12,
+            : 0,
       },
 
       // Issue counts (from backend seo.issues, with safe fallbacks)
       issues: {
-        critical: seo.issues?.critical ?? 274,
-        warning: seo.issues?.warning ?? 883,
-        recommendations: seo.issues?.recommendations ?? 77,
-        contentOpps: seo.issues?.contentOpps ?? 5,
+        critical: seo.issues?.critical ?? 0,
+        warning: seo.issues?.warning ?? 0,
+        recommendations: seo.issues?.recommendations ?? 0,
+        contentOpps: seo.issues?.contentOpps ?? 0,
       },
 
       // Growth percentages for issues (from backend seo.issuesGrowth if present)
@@ -729,61 +729,61 @@ export default function Dashboard({ onOpenContentEditor }) {
   }, [seo, metricSources]);
 
   // ====== Values (with graceful fallbacks to your current hardcoded demo numbers) ======
-  const DR_TARGET = selected?.domainRating ?? 53.6; // 0–100 scale now
-  const INDUSTRY_AVG = selected?.industryAvgDR ?? 45.2;
+  const DR_TARGET = selected?.domainRating ?? 0; // 0–100 scale now
+  const INDUSTRY_AVG = selected?.industryAvgDR ?? 0;
 
-  const RD_TARGET = selected?.referringDomains ?? 63400;
+  const RD_TARGET = selected?.referringDomains ?? 0;
   // Normalize High/Medium/Low quality percentages so they always sum to 100
   const qualitySplit = useMemo(() => {
-    const h = selected?.trustBar ?? 45;
-    const m = selected?.medQuality ?? 35;
-    const l = selected?.lowQuality ?? 20;
+    const h = selected?.trustBar ?? 0;
+    const m = selected?.medQuality ?? 0;
+    const l = selected?.lowQuality ?? 0;
     const sum = (h ?? 0) + (m ?? 0) + (l ?? 0);
     if (!sum || sum === 100) return { h, m, l };
     return { h: (h / sum) * 100, m: (m / sum) * 100, l: (l / sum) * 100 };
   }, [selected?.trustBar, selected?.medQuality, selected?.lowQuality]);
 
-  const TB_TARGET = selected?.backlinks ?? (26.1 * 1_000_000_000);
+  const TB_TARGET = selected?.backlinks ?? 0;
 
-  const SH_SCORE  = selected?.siteHealth ?? 100.0;
-  const SH_PAGES  = selected?.pagesScanned ?? 2100;
-  const SH_REDIRECT = selected?.redirects ?? 89;
-  const SH_BROKEN = selected?.broken ?? 15;
+  const SH_SCORE  = selected?.siteHealth ?? 0;
+  const SH_PAGES  = selected?.pagesScanned ?? 0;
+  const SH_REDIRECT = selected?.redirects ?? 0;
+  const SH_BROKEN = selected?.broken ?? 0;
 
   // CWV: drive tiles from dataset; fall back to demos if missing
-  const LCP_TARGET = selected?.cwvScores?.LCP_Score ?? 2.1;   // seconds
-  const INP_TARGET = selected?.cwvScores?.INP_Score ?? 180;   // ms
-  const CLS_TARGET = selected?.cwvScores?.CLS_Score ?? 0.08;  // unitless
+  const LCP_TARGET = selected?.cwvScores?.LCP_Score ?? 0;   // seconds
+  const INP_TARGET = selected?.cwvScores?.INP_Score ?? 0;   // ms
+  const CLS_TARGET = selected?.cwvScores?.CLS_Score ?? 0;  // unitless
 
-  const PS_DESKTOP = selected?.pageSpeed?.desktop ?? 95;
-  const PS_MOBILE  = selected?.pageSpeed?.mobile ?? 87;
+  const PS_DESKTOP = selected?.pageSpeed?.desktop ?? 0;
+  const PS_MOBILE  = selected?.pageSpeed?.mobile ?? 0;
 
-  const OT_TARGET  = selected?.organicTraffic?.monthly ?? 38600;
-  const OK_TOTAL   = selected?.organicKeywords?.total ?? 90600;
+  const OT_TARGET  = selected?.organicTraffic?.monthly ?? 0;
+  const OK_TOTAL   = selected?.organicKeywords?.total ?? 0;
 
   // If breakdown present, use it; else fall back to your demo split
   const OK_SPLIT = {
-    top3:  selected?.organicKeywords?.top3  ?? 12300,
-    top10: selected?.organicKeywords?.top10 ?? 24800,
-    top100:selected?.organicKeywords?.top100?? 53600,
+    top3:  selected?.organicKeywords?.top3  ?? 0,
+    top10: selected?.organicKeywords?.top10 ?? 0,
+    top100:selected?.organicKeywords?.top100?? 0,
     total: OK_TOTAL,
   };
 
-  const LEADS_TARGET = selected?.leads?.monthly ?? 887;
-  const LEADS_GOAL   = selected?.leads?.goal ?? 1500;
+  const LEADS_TARGET = selected?.leads?.monthly ?? 0;
+  const LEADS_GOAL   = selected?.leads?.goal ?? 0;
   const CF_VALUE     = selected?.leads?.contactForm ?? 0;
   const NL_VALUE     = selected?.leads?.newsletter ?? 0;
   const CF_LIMIT     = 800;
   const NL_LIMIT     = 400;
 
   const serpCountsMemo = useMemo(() => ([
-    selected?.serp?.featuredSnippets ?? 23,
-    selected?.serp?.peopleAlsoAsk ?? 156,
-    selected?.serp?.imagePack ?? 89,
-    selected?.serp?.videoResults ?? 34,
-    selected?.serp?.knowledgePanel ?? 12,
+    selected?.serp?.featuredSnippets ?? 0,
+    selected?.serp?.peopleAlsoAsk ?? 0,
+    selected?.serp?.imagePack ?? 0,
+    selected?.serp?.videoResults ?? 0,
+    selected?.serp?.knowledgePanel ?? 0,
   ]), [selected?.serp]);
-  const SERP_COVERAGE = selected?.serp?.coveragePercent ?? 45;
+  const SERP_COVERAGE = selected?.serp?.coveragePercent ?? 0;
 
   const seoRowsFromData = selected?.seoRows?.length ? selected.seoRows : null;
 
@@ -850,10 +850,10 @@ const serpCounts = serpCountsMemo.map((n) => Math.max(0, Math.round(n * prog)));
 const serpCoverage = Math.max(0, SERP_COVERAGE * prog);
 
 const oppCounts = [
-  Math.round(Math.max(0, (selected?.issues?.critical ?? 274) * prog)),
-  Math.round(Math.max(0, (selected?.issues?.warning ?? 883) * prog)),
-  Math.round(Math.max(0, (selected?.issues?.recommendations ?? 77) * prog)),
-  Math.round(Math.max(0, (selected?.issues?.contentOpps ?? 5) * prog)),
+  Math.round(Math.max(0, (selected?.issues?.critical ?? 0) * prog)),
+  Math.round(Math.max(0, (selected?.issues?.warning ?? 0) * prog)),
+  Math.round(Math.max(0, (selected?.issues?.recommendations ?? 0) * prog)),
+  Math.round(Math.max(0, (selected?.issues?.contentOpps ?? 0) * prog)),
 ];
 
 const oppCardsProgress = Math.max(0, prog);
@@ -1128,13 +1128,13 @@ const seoTableProg = Math.max(0, prog);
 
               <div className="mt-3 flex flex-wrap items-center gap-6 text-[11px] text-[var(--muted)]">
                 <span className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#1CC88A]" /> High: {(qualitySplit.h ?? 45).toFixed(0)}%
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#1CC88A]" /> High: {(qualitySplit.h ?? 0).toFixed(0)}%
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#F59E0B]" /> Medium: {(qualitySplit.m ?? 35).toFixed(0)}%
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#F59E0B]" /> Medium: {(qualitySplit.m ?? 0).toFixed(0)}%
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#EF4444]" /> Low: {(qualitySplit.l ?? 20).toFixed(0)}%
+                  <span className="inline-block h-2 w-2 rounded-full bg-[#EF4444]" /> Low: {(qualitySplit.l ?? 0).toFixed(0)}%
                 </span>
               </div>
             </div>
