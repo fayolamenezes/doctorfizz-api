@@ -708,3 +708,151 @@ export async function fetchDataForSeo(targetInput, options = {}) {
     seoRows,
   };
 }
+
+/* ============================================================================
+   NEW: Sitemap missing → DataForSEO crawl fallback helper
+   - Appended without modifying your existing code above.
+   - Used by /api/seo/opportunities route (or your scan orchestrator).
+============================================================================ */
+
+/**
+ * Crawl a website with DataForSEO On-Page API and return discovered URLs.
+ *
+ * IMPORTANT:
+ * - This function is intentionally "best effort".
+ * - It does NOT alter fetchDataForSeo() behavior.
+ * - It is a separate export so you can call it only where needed.
+ *
+ * @param {string} targetDomain - domain like "example.com"
+ * @param {object} opts
+ * @param {number} opts.maxCrawlPages - maximum pages to crawl (cost control)
+ * @param {number} opts.limitPagesResult - max URLs to return from /pages
+ * @returns {Promise<string[]>} unique list of discovered URLs
+ */
+export async function crawlSiteUrlsWithDataForSEO(
+  targetDomain,
+  { maxCrawlPages = 60, limitPagesResult = 200 } = {}
+) {
+  const login = DATAFORSEO_LOGIN;
+  const password = DATAFORSEO_PASSWORD;
+
+  if (!login || !password) {
+    console.warn("[DataForSEO] Missing credentials; crawl fallback skipped.");
+    return [];
+  }
+
+  const target = (targetDomain || "")
+    .toString()
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0];
+
+  if (!target) return [];
+
+  const auth = Buffer.from(`${login}:${password}`).toString("base64");
+
+  // 1) Create On-Page task
+  // Note: DataForSEO On-Page crawl runs asynchronously; we create a task then query results.
+  const taskPayload = [
+    {
+      target,
+      max_crawl_pages: maxCrawlPages,
+      load_resources: true,
+      enable_javascript: true,
+      enable_browser_rendering: true,
+    },
+  ];
+
+  const taskRes = await fetch("https://api.dataforseo.com/v3/on_page/task_post", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(taskPayload),
+  });
+
+  if (!taskRes.ok) {
+    const text = await taskRes.text();
+    console.error("[DataForSEO] on_page/task_post failed:", text);
+    return [];
+  }
+
+  const taskJson = await taskRes.json();
+  const task = Array.isArray(taskJson?.tasks) ? taskJson.tasks[0] : null;
+
+  // DataForSEO response shapes vary; try common paths.
+  const id =
+    task?.result?.[0]?.id ||
+    task?.result?.id ||
+    task?.id ||
+    task?.task_id ||
+    null;
+
+  if (!id) {
+    console.error("[DataForSEO] Could not read task id from response:", taskJson);
+    return [];
+  }
+
+  // 2) Poll summary a few times (best effort; do not block too long)
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  for (let i = 0; i < 6; i++) {
+    try {
+      const sumRes = await fetch(
+        `https://api.dataforseo.com/v3/on_page/summary/${id}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Basic ${auth}` },
+        }
+      );
+
+      if (sumRes.ok) {
+        const sumJson = await sumRes.json();
+        const t = Array.isArray(sumJson?.tasks) ? sumJson.tasks[0] : null;
+
+        const crawlProgress = t?.result?.[0]?.crawl_progress;
+        if (crawlProgress === 100) break;
+      }
+    } catch {
+      // ignore poll errors
+    }
+    await sleep(1500);
+  }
+
+  // 3) Fetch discovered pages
+  const pagesPayload = [
+    {
+      id,
+      limit: Math.min(1000, Math.max(1, limitPagesResult)),
+      offset: 0,
+    },
+  ];
+
+  const pagesRes = await fetch("https://api.dataforseo.com/v3/on_page/pages", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(pagesPayload),
+  });
+
+  if (!pagesRes.ok) {
+    const text = await pagesRes.text();
+    console.error("[DataForSEO] on_page/pages failed:", text);
+    return [];
+  }
+
+  const pagesJson = await pagesRes.json();
+  const pagesTask = Array.isArray(pagesJson?.tasks) ? pagesJson.tasks[0] : null;
+  const result0 = Array.isArray(pagesTask?.result) ? pagesTask.result[0] : null;
+  const items = Array.isArray(result0?.items) ? result0.items : [];
+
+  const urls = items
+    .map((it) => it?.url || it?.page_url || it?.resource?.url)
+    .filter(Boolean);
+
+  return Array.from(new Set(urls));
+}

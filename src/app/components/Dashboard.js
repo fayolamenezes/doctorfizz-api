@@ -509,7 +509,25 @@ export default function Dashboard({ onOpenContentEditor }) {
     const effectiveDomainRating =
       domainRatingFromOpenPageRank ?? domainRatingFromDataForSeo ?? undefined;
 
-    const mapped = {
+    
+    // ---- Quality distribution (DataForSEO doesn't provide buckets; derive from spam score) ----
+    const spamScore =
+      typeof backlinksSummary?.backlinks_spam_score === "number"
+        ? backlinksSummary.backlinks_spam_score
+        : null;
+
+    const qualityFromSpam = (() => {
+      if (spamScore == null) return { h: 0, m: 0, l: 0 };
+
+      // Simple heuristic:
+      // lower spam => more "High quality" share.
+      if (spamScore <= 5) return { h: 70, m: 20, l: 10 };
+      if (spamScore <= 15) return { h: 50, m: 30, l: 20 };
+      if (spamScore <= 30) return { h: 35, m: 35, l: 30 };
+      return { h: 25, m: 35, l: 40 };
+    })();
+
+const mapped = {
       domain: seo._meta?.domain || domain,
       dateAnalyzed: seo._meta?.generatedAt || "",
 
@@ -520,9 +538,9 @@ export default function Dashboard({ onOpenContentEditor }) {
         typeof effectiveDomainRating === "number"
           ? Math.max(20, Math.min(80, effectiveDomainRating * 1.1))
           : 0,
-      trustBar: 0,
-      medQuality: 0,
-      lowQuality: 0,
+      trustBar: qualityFromSpam.h,
+      medQuality: qualityFromSpam.m,
+      lowQuality: qualityFromSpam.l,
       referringDomains:
         typeof backlinksSummary.referring_domains === "number"
           ? backlinksSummary.referring_domains
@@ -597,17 +615,28 @@ export default function Dashboard({ onOpenContentEditor }) {
             : undefined,
       },
 
-      // Performance (still demo for now)
+      // Performance (keywords from DataForSEO; traffic needs GA so remains 0)
       organicTraffic: {
         monthly: 0,
         growth: 0,
       },
-      organicKeywords: {
-        total: 0,
-        top3: 0,
-        top10: 0,
-        top100: 0,
-      },
+      organicKeywords: (() => {
+        const topKw = Array.isArray(dataForSeo?.topKeywords)
+          ? dataForSeo.topKeywords
+          : Array.isArray(seo?.seoRows)
+          ? seo.seoRows
+          : [];
+        const total = topKw.length || 0;
+
+        if (!total) return { total: 0, top3: 0, top10: 0, top100: 0 };
+
+        // Best-effort split (until GSC is connected)
+        const top3 = Math.max(0, Math.min(total, Math.round(total * 0.1)));
+        const top10 = Math.max(top3, Math.min(total, Math.round(total * 0.3)));
+        const top100 = total;
+
+        return { total, top3, top10, top100 };
+      })(),
 
       // Leads (demo)
       leads: {
@@ -1527,10 +1556,12 @@ const seoTableProg = Math.max(0, prog);
                   <BarChart3 size={16} />
                 </span>
                 <span className="flex items-center gap-1 text-[13px] text-gray-700 leading-relaxed">Organic traffic</span>
-                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[11px] font-medium text-[#178A5D]">
-                  <span className="h-2 w-2 rounded-full bg-[#22C55E]" />
-                  Positive Growth
-                </span>
+                {(selected?.organicTraffic?.growth ?? 0) > 0 && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[11px] font-medium text-[#178A5D]">
+                    <span className="h-2 w-2 rounded-full bg-[#22C55E]" />
+                    Positive Growth
+                  </span>
+                )}
               </div>
               <div className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)]">
                 All Devices <ChevronRight size={14} className="-rotate-90" />
@@ -1542,7 +1573,7 @@ const seoTableProg = Math.max(0, prog);
                 {otValue >= 1000 ? (otValue / 1000).toFixed(1) + "k" : Math.round(otValue)}
               </div>
               <div className="ml-1 inline-flex items-center gap-1 rounded-full bg-[#EAF8F1] px-2 py-0.5 text-[11px] font-medium text-[#178A5D]">
-                ↗︎ +{selected?.organicTraffic?.growth ?? 23}
+                ↗︎ +{selected?.organicTraffic?.growth ?? 0}
               </div>
             </div>
 
@@ -1563,7 +1594,7 @@ const seoTableProg = Math.max(0, prog);
                   <path d="M 8 120 C 60 60, 110 85, 150 95 S 240 110, 270 88 S 350 60, 385 92 S 455 60, 512 20" fill="none" stroke="#22C55E" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" pathLength="100" strokeDasharray="100" strokeDashoffset={100 - otProg * 100} />
                 </g>
                 <g fontFamily="ui-sans-serif, system-ui" fontSize="10" fill="#8D96A8" textAnchor="start">
-                  <text x="500" y="18">+{selected?.organicTraffic?.growth ?? 23}</text>
+                  <text x="500" y="18">+{selected?.organicTraffic?.growth ?? 0}</text>
                   <text x="500" y="54">18</text>
                   <text x="500" y="90">12</text>
                 </g>

@@ -1,3 +1,4 @@
+// src/app/components/OpportunitiesSection.js
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -10,6 +11,7 @@ import {
   Check,
   PencilLine,
   X,
+  // (no UI changes required, so we keep your icon set untouched)
 } from "lucide-react";
 
 /* ============================================================
@@ -95,104 +97,57 @@ function getSiteFromStorageOrQuery(searchParams) {
   return "example.com";
 }
 
-/**
- * Mapper for seo-data.json rows (metrics + basic content)
- */
-function mapSeoRowToSchema(row) {
-  const n = (x, d = undefined) => {
-    if (typeof x === "number" && Number.isFinite(x)) return x;
-    if (typeof x === "string") {
-      const v = Number(x.replace?.(/[, ]/g, "") ?? x);
-      if (Number.isFinite(v)) return v;
-    }
-    return d;
-  };
-  const s = (x, d = undefined) => (typeof x === "string" ? x : d);
+/* ============================================================
+   NEW helpers (for live opportunities API)
+============================================================ */
 
-  return {
-    domain: normalizeDomain(s(row["Domain/Website"], s(row["Domain"], ""))),
-    content: {
-      blog: [
-        {
-          title: s(row["Blog1_Title"], "Untitled"),
-          priority: s(row["Blog1_Priority"], "Medium Priority"),
-          wordCount: n(row["Blog1_Word_Count"], 0),
-          keywords: n(row["Blog1_Num_Keywords"], 0),
-          score: n(row["Blog1_Score"], 0),
-          status: s(row["Blog1_Status"], "Draft"),
-          content: s(row["Blog1_Content"], ""),
-        },
-        {
-          title: s(row["Blog2_Title"], "Untitled"),
-          priority: s(row["Blog2_Priority"], "Medium Priority"),
-          wordCount: n(row["Blog2_Word_Count"], 0),
-          keywords: n(row["Blog2_Num_Keywords"], 0),
-          score: n(row["Blog2_Score"], 0),
-          status: s(row["Blog2_Status"], "Draft"),
-          content: s(row["Blog2_Content"], ""),
-        },
-      ],
-      pages: [
-        {
-          title: s(row["Page1_Title"], "Untitled"),
-          priority: s(row["Page1_Priority"], "Medium Priority"),
-          wordCount: n(row["Page1_Word_Count"], 0),
-          keywords: n(row["Page1_Num_Keywords"], 0),
-          score: n(row["Page1_Score"], 0),
-          status: s(row["Page1_Status"], "Draft"),
-          content: s(row["Page1_Content"], ""),
-        },
-        {
-          title: s(row["Page2_Title"], "Untitled"),
-          priority: s(row["Page2_Priority"], "Medium Priority"),
-          wordCount: n(row["Page2_Word_Count"], 0),
-          keywords: n(row["Page2_Num_Keywords"], 0),
-          score: n(row["Page2_Score"], 0),
-          status: s(row["Page2_Status"], "Draft"),
-          content: s(row["Page2_Content"], ""),
-        },
-      ],
-    },
-  };
-}
+const toWebsiteUrl = (domain) => {
+  const d = normalizeDomain(domain || "");
+  if (!d) return "";
+  return `https://${d}`;
+};
+
+// Simple, predictable heuristics for UI metrics
+const estimateKeywords = (wordCount) => {
+  const wc = Number(wordCount) || 0;
+  return Math.max(0, Math.round(wc / 200));
+};
+
+const scoreFromWordCount = (wordCount) => {
+  const wc = Number(wordCount) || 0;
+  // map 0..2000 words -> 0..100 score
+  const s = Math.round((Math.min(2000, Math.max(0, wc)) / 2000) * 100);
+  return s;
+};
 
 /**
- * Mapper for multi-content.json:
- * keeps primaryKeyword, lsiKeywords, plagiarism, searchVolume, keywordDifficulty per slot.
+ * Convert API result item -> the slot object your existing UI expects.
+ * (Keep fields that your Start flow uses: title, content, primaryKeyword, lsiKeywords, etc.)
  */
-function mapMultiRowToContent(row) {
-  const safeSlot = (slot) =>
-    slot && typeof slot === "object"
-      ? {
-          title: slot.title || null,
-          content: slot.content || "",
-          primaryKeyword: slot.primaryKeyword || null,
-          lsiKeywords: Array.isArray(slot.lsiKeywords) ? slot.lsiKeywords : [],
-          plagiarism:
-            typeof slot.plagiarism === "number" ? slot.plagiarism : null,
-          searchVolume:
-            typeof slot.searchVolume === "number" ? slot.searchVolume : null,
-          keywordDifficulty:
-            typeof slot.keywordDifficulty === "number"
-              ? slot.keywordDifficulty
-              : null,
-        }
-      : {
-          title: null,
-          content: "",
-          primaryKeyword: null,
-          lsiKeywords: [],
-          plagiarism: null,
-          searchVolume: null,
-          keywordDifficulty: null,
-        };
+function mapApiItemToSlot(item, fallbackTitle) {
+  const title = item?.title || fallbackTitle || "Untitled";
+  const wc = typeof item?.wordCount === "number" ? item.wordCount : 0;
 
   return {
-    domain: normalizeDomain(row.domain || ""),
-    content: {
-      blog: [safeSlot(row.blog1), safeSlot(row.blog2)],
-      pages: [safeSlot(row.page1), safeSlot(row.page2)],
-    },
+    title,
+    priority: "Medium Priority", // UI badge already recalculates based on score; keep stable label
+    wordCount: wc,
+    keywords: estimateKeywords(wc),
+    score: scoreFromWordCount(wc),
+    status: "Draft",
+    content: "", // we are NOT storing full HTML here yet; editor can fetch per-url later if needed
+    slug: slugify(title),
+
+    // keep optional SEO fields (null/empty for now, can be filled later)
+    primaryKeyword: null,
+    lsiKeywords: [],
+    plagiarism: null,
+    searchVolume: null,
+    keywordDifficulty: null,
+
+    // extra useful fields (won’t break UI)
+    url: item?.url || null,
+    description: item?.description || "",
   };
 }
 
@@ -393,10 +348,19 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
   const searchParams = useSearchParams();
   const [domain, setDomain] = useState("example.com");
 
+  // KEEP your original "rows" shape, but now it is loaded from /api/seo/opportunities
   const [seoRows, setSeoRows] = useState(null);
   const [multiRows, setMultiRows] = useState(null);
 
   const [prog, setProg] = useState(0);
+
+  // NEW: load state for live API
+  const [loadingOpps, setLoadingOpps] = useState(false);
+  const [oppsError, setOppsError] = useState("");
+
+  // NEW: scan/poll state (for 202 Accepted flow)
+  const [scanId, setScanId] = useState("");
+  const pollTimerRef = useRef(null);
 
   // Modal state
   const [startOpen, setStartOpen] = useState(false);
@@ -407,50 +371,167 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
     setDomain(d);
   }, [searchParams]);
 
-  // Load seo-data.json
+  // Cleanup polling on unmount
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await fetch("/data/seo-data.json", { cache: "no-store" });
-        const json = await res.json();
-        if (alive && Array.isArray(json)) {
-          setSeoRows(json.map(mapSeoRowToSchema));
-        }
-      } catch (e) {
-        console.error("Failed to load /data/seo-data.json", e);
-      }
-    })();
     return () => {
-      alive = false;
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     };
   }, []);
 
-  // Load multi-content.json
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  const startPolling = useCallback(
+    (id, { onComplete }) => {
+      stopPolling();
+      if (!id) return;
+
+      pollTimerRef.current = setInterval(async () => {
+        try {
+          const res = await fetch(
+            `/api/seo/scan/status?scanId=${encodeURIComponent(id)}`,
+            { method: "GET" }
+          );
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) return;
+
+          const status = json?.status;
+          if (status === "complete") {
+            stopPolling();
+            onComplete?.();
+          } else if (status === "failed") {
+            stopPolling();
+            setOppsError(
+              json?.diagnostics?.error || "SEO scan failed. Please retry."
+            );
+            setLoadingOpps(false);
+          }
+        } catch {
+          // ignore transient poll errors
+        }
+      }, 2500);
+    },
+    [stopPolling]
+  );
+
+  /**
+   * Load opportunities:
+   * - If 200: use data
+   * - If 202: store scanId, poll scan status, then refetch on complete
+   */
   useEffect(() => {
     let alive = true;
-    (async () => {
+
+    const buildRowFromOppsJson = (json, d) => {
+      const blogs = Array.isArray(json?.blogs) ? json.blogs : [];
+      const pages = Array.isArray(json?.pages) ? json.pages : [];
+
+      return {
+        domain: normalizeDomain(json?.hostname || d),
+        content: {
+          blog: [
+            mapApiItemToSlot(blogs[0], "Blog Opportunity 1"),
+            mapApiItemToSlot(blogs[1], "Blog Opportunity 2"),
+          ],
+          pages: [
+            mapApiItemToSlot(pages[0], "Page Opportunity 1"),
+            mapApiItemToSlot(pages[1], "Page Opportunity 2"),
+          ],
+        },
+      };
+    };
+
+    const load = async ({ refetchAfterScan = false } = {}) => {
+      const d = normalizeDomain(domain);
+      if (!d || d === "example.com") return;
+
+      // If this is a refetch after scan completion, keep the UI stable:
+      // don't clear rows; just flip loading text.
+      setLoadingOpps(true);
+      setOppsError("");
+
       try {
-        const res = await fetch("/data/multi-content.json", {
-          cache: "no-store",
+        const websiteUrl = toWebsiteUrl(d);
+
+        const res = await fetch("/api/seo/opportunities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ websiteUrl }),
         });
-        const json = await res.json();
-        if (alive && Array.isArray(json)) {
-          setMultiRows(json.map(mapMultiRowToContent));
+
+        const json = await res.json().catch(() => ({}));
+
+        // 202: scan queued/running
+        if (res.status === 202) {
+          const id = json?.source?.scanId || "";
+          if (alive) {
+            setScanId(id);
+            // Keep placeholder tiles if we already have them; otherwise null.
+            if (!seoRows) {
+              setSeoRows(null);
+              setMultiRows(null);
+            }
+          }
+
+          // Poll scan status; on complete refetch
+          startPolling(id, {
+            onComplete: () => {
+              if (!alive) return;
+              // After scan completes, refetch opportunities (should be 200 cache)
+              load({ refetchAfterScan: true }).catch(() => {});
+            },
+          });
+
+          // Keep loading state true (shows “Loading opportunities…” text)
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to load opportunities");
+        }
+
+        // 200 OK: opportunities ready
+        const row = buildRowFromOppsJson(json, d);
+
+        if (alive) {
+          setSeoRows([row]);
+          setMultiRows(null);
+          setScanId(json?.source?.scanId || "");
+          stopPolling();
         }
       } catch (e) {
-        console.error("Failed to load /data/multi-content.json", e);
+        if (alive) {
+          setOppsError(e?.message || "Failed to load opportunities");
+          // Only clear if this wasn't just a refresh attempt
+          if (!refetchAfterScan) {
+            setSeoRows(null);
+            setMultiRows(null);
+          }
+        }
+      } finally {
+        if (alive) setLoadingOpps(false);
       }
-    })();
+    };
+
+    load();
+
     return () => {
       alive = false;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, startPolling, stopPolling]);
 
   const selectedSeo = useMemo(() => {
     if (!seoRows?.length) return null;
     const key = normalizeDomain(domain);
-    return seoRows.find((r) => r.domain === key) || null;
+    return seoRows.find((r) => r.domain === key) || seoRows[0] || null;
   }, [seoRows, domain]);
 
   const selectedMulti = useMemo(() => {
@@ -536,11 +617,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
     const multi = selectedMulti?.content?.blog ?? [];
     const out = [];
     for (let i = 0; i < 2; i += 1) {
-      const merged = mergeSlot(
-        seo[i],
-        multi[i],
-        `Blog Opportunity ${i + 1}`
-      );
+      const merged = mergeSlot(seo[i], multi[i], `Blog Opportunity ${i + 1}`);
       out.push(merged);
     }
     return out;
@@ -551,11 +628,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
     const multi = selectedMulti?.content?.pages ?? [];
     const out = [];
     for (let i = 0; i < 2; i += 1) {
-      const merged = mergeSlot(
-        seo[i],
-        multi[i],
-        `Page Opportunity ${i + 1}`
-      );
+      const merged = mergeSlot(seo[i], multi[i], `Page Opportunity ${i + 1}`);
       out.push(merged);
     }
     return out;
@@ -608,8 +681,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       domain: real.domain || domain,
       primaryKeyword: real.primaryKeyword || null,
       lsiKeywords: real.lsiKeywords || [],
-      plagiarism:
-        typeof real.plagiarism === "number" ? real.plagiarism : null,
+      plagiarism: typeof real.plagiarism === "number" ? real.plagiarism : null,
       searchVolume:
         typeof real.searchVolume === "number" ? real.searchVolume : null,
       keywordDifficulty:
@@ -732,11 +804,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
         <div className="mt-3 flex items-center gap-2">
           <PriorityBadge score={score} />
           <span className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[#F6F8FB] px-2.5 py-1 text-[12px] text-[var(--muted)]">
-            {status === "Published" ? (
-              <Check size={14} />
-            ) : (
-              <PencilLine size={14} />
-            )}
+            {status === "Published" ? <Check size={14} /> : <PencilLine size={14} />}
             {status}
           </span>
         </div>
@@ -762,6 +830,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
           <button className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[var(--input)] px-3 py-2 text-[12px] font-medium text-[var(--muted)]">
             <Eye size={14} /> View Details
           </button>
+
           <button
             onClick={() => {
               const titleForSlug = realTitle || displayTitle;
@@ -776,13 +845,9 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
                 primaryKeyword: data?.primaryKeyword || null,
                 lsiKeywords: data?.lsiKeywords || [],
                 plagiarism:
-                  typeof data?.plagiarism === "number"
-                    ? data.plagiarism
-                    : null,
+                  typeof data?.plagiarism === "number" ? data.plagiarism : null,
                 searchVolume:
-                  typeof data?.searchVolume === "number"
-                    ? data.searchVolume
-                    : null,
+                  typeof data?.searchVolume === "number" ? data.searchVolume : null,
                 keywordDifficulty:
                   typeof data?.keywordDifficulty === "number"
                     ? data.keywordDifficulty
@@ -803,11 +868,25 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
      UI — Opportunities grid + Start modal
   ============================================================ */
 
+  const loadingMsg = scanId
+    ? "Scanning site… (building opportunities)"
+    : "Loading opportunities from sitemap / crawl…";
+
   return (
     <>
       <h2 className="mb-3 ml-1 text-[16px] font-bold text-[var(--text)]">
         Top On-Page Content Opportunities
       </h2>
+
+      {/* Optional: show loading/error without changing layout */}
+      {loadingOpps ? (
+        <div className="mb-3 ml-1 text-[12px] text-[var(--muted)]">
+          {loadingMsg}
+        </div>
+      ) : null}
+      {oppsError ? (
+        <div className="mb-3 ml-1 text-[12px] text-red-500">{oppsError}</div>
+      ) : null}
 
       <section className="mb-10 grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="rounded-[16px] border border-[var(--border)] bg-[var(--input)] p-4">
@@ -818,16 +897,9 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
             <span className="text-[13px] font-semibold">BLOG</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {(blogCards.length ? blogCards.slice(0, 2) : [{}, {}]).map(
-              (b, i) => (
-                <OpportunityCard
-                  key={`b-${i}`}
-                  type="blog"
-                  index={i}
-                  data={b}
-                />
-              )
-            )}
+            {(blogCards.length ? blogCards.slice(0, 2) : [{}, {}]).map((b, i) => (
+              <OpportunityCard key={`b-${i}`} type="blog" index={i} data={b} />
+            ))}
           </div>
         </div>
 
@@ -839,16 +911,9 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
             <span className="text-[13px] font-semibold">PAGES</span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {(pageCards.length ? pageCards.slice(0, 2) : [{}, {}]).map(
-              (p, i) => (
-                <OpportunityCard
-                  key={`p-${i}`}
-                  type="page"
-                  index={i}
-                  data={p}
-                />
-              )
-            )}
+            {(pageCards.length ? pageCards.slice(0, 2) : [{}, {}]).map((p, i) => (
+              <OpportunityCard key={`p-${i}`} type="page" index={i} data={p} />
+            ))}
           </div>
         </div>
       </section>

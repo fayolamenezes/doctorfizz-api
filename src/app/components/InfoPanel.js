@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useMemo, useState } from "react";
@@ -7,7 +6,8 @@ import { Pin, PinOff, BarChart2 } from "lucide-react";
 import Image from "next/image";
 
 /* -------------------- Video helpers -------------------- */
-const DEFAULT_VIDEO = "https://youtube.com/shorts/_7LPvKmZkwg?si=vD25P17VltV7szZu";
+const DEFAULT_VIDEO =
+  "https://youtube.com/shorts/_7LPvKmZkwg?si=vD25P17VltV7szZu";
 
 function toYouTubeEmbed(url) {
   try {
@@ -146,6 +146,36 @@ function formatNumber(num) {
 
 /* -------------------- Presentational helpers -------------------- */
 function WebsiteStatsCard({ website, stats }) {
+  const badge = stats?.badge || { label: "Good", tone: "success" };
+
+  const badgeClass =
+    badge?.tone === "danger"
+      ? "bg-red-100 text-red-700"
+      : badge?.tone === "warning"
+      ? "bg-amber-100 text-amber-800"
+      : "bg-emerald-100 text-emerald-700";
+
+  const items = [
+    {
+      key: "domainAuthority",
+      label: "Domain Authority",
+      value: stats?.domainAuthority,
+      growth: stats?.growth?.domainAuthority,
+    },
+    {
+      key: "organicTraffic",
+      label: "Organic Traffic",
+      value: stats?.organicTraffic,
+      growth: stats?.growth?.organicTraffic,
+    },
+    {
+      key: "organicKeyword",
+      label: "Organic Keyword",
+      value: stats?.organicKeyword,
+      growth: stats?.growth?.organicKeyword,
+    },
+  ];
+
   return (
     <div className="rounded-2xl bg-white border border-gray-200 shadow-sm p-5 dark:bg-[var(--extra-input-dark)] dark:border-[var(--extra-border-dark)]">
       {/* header */}
@@ -154,37 +184,53 @@ function WebsiteStatsCard({ website, stats }) {
           WEBSITE :
           <span className="ml-2 text-[13px] font-semibold text-[#d45427]">{website}</span>
         </div>
-        <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-semibold px-2.5 py-[3px]">
-          Good
+        <span
+          className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-[3px] ${badgeClass}`}
+        >
+          {badge?.label || "Good"}
         </span>
       </div>
+
       {/* stats */}
       <div className="mt-3 rounded-xl bg-white p-4 dark:bg-[var(--extra-input-dark)]">
         <div className="flex items-stretch divide-x divide-gray-200 dark:divide-[var(--extra-border-dark)]">
-          {[
-            ["Domain Authority", stats.domainAuthority],
-            ["Organic Traffic", stats.organicTraffic],
-            ["Organic Keyword", stats.organicKeyword],
-          ].map(([label, value], idx) => (
-            <div key={idx} className="flex-1 px-5 text-center">
-              <div className="text-[13px] leading-[16px] text-gray-600 dark:text-[var(--muted)] font-medium">
-                {label}
-              </div>
-                <div className="mt-2 mb-1.5 flex items-center justify-center gap-2">
-                <div className="text-[clamp(20px,3vw,23px)] leading-tight font-extrabold text-gray-900 dark:text-[var(--text)]">
-                  {Number.isFinite(value) ? formatNumber(value) : "--"}
+          {items.map((it, idx) => {
+            const hasValue = Number.isFinite(it.value);
+            const g = typeof it.growth === "number" && Number.isFinite(it.growth) ? it.growth : null;
+            const showRealGrowth = g !== null;
+            const arrowUp = showRealGrowth ? g >= 0 : hasValue ? it.value >= 70 : null;
+
+            return (
+              <div key={idx} className="flex-1 px-5 text-center">
+                <div className="text-[13px] leading-[16px] text-gray-600 dark:text-[var(--muted)] font-medium">
+                  {it.label}
                 </div>
-                {value >= 70 ? (
-                  <span className="text-emerald-400 text-[14px]">↑</span>
-                ) : (
-                  <span className="text-red-400 text-[14px]">↓</span>
-                )}
+
+                <div className="mt-2 mb-1.5 flex items-center justify-center gap-2">
+                  <div className="text-[clamp(20px,3vw,23px)] leading-tight font-extrabold text-gray-900 dark:text-[var(--text)]">
+                    {hasValue ? formatNumber(it.value) : "--"}
+                  </div>
+
+                  {hasValue ? (
+                    arrowUp ? (
+                      <span className="text-emerald-400 text-[14px]">↑</span>
+                    ) : (
+                      <span className="text-red-400 text-[14px]">↓</span>
+                    )
+                  ) : null}
+                </div>
+
+                <div
+                  className="text-[13px] text-gray-500 dark:text-[var(--muted)]"
+                  suppressHydrationWarning
+                >
+                  {showRealGrowth
+                    ? `${Math.abs(g)}%`
+                    : Math.floor(Math.random() * (100 - 26 + 1)) + 26}
+                </div>
               </div>
-              <div className="text-[13px] text-gray-500 dark:text-[var(--muted)]" suppressHydrationWarning>
-                {Math.floor(Math.random() * (100 - 26 + 1)) + 26}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -275,12 +321,7 @@ function ContentCard({
       )}
 
       {/* video preview row with poster */}
-      <VideoRow
-        title={videoTitle}
-        author={author}
-        poster={poster}
-        onOpen={() => setOpen(true)}
-      />
+      <VideoRow title={videoTitle} author={author} poster={poster} onOpen={() => setOpen(true)} />
 
       {/* modal via portal (global overlay) */}
       <VideoModal
@@ -331,7 +372,7 @@ export default function InfoPanel({
   // (optional) global video state if you add a top header play button later
   const [activeVideo, setActiveVideo] = useState(null);
 
-  // load dataset (for stat numbers)
+  // load dataset (for stat numbers) - fallback
   const [rows, setRows] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -356,6 +397,43 @@ export default function InfoPanel({
     const key = normalizeDomain(websiteData?.website || "");
     return rows.find((r) => r.domain === key) || rows.find((r) => r.domain === `www.${key}`) || null;
   }, [rows, websiteData?.website]);
+
+  // ✅ Option A: fetch /api/seo directly when InfoPanel opens (no window.__drfizzSeoPrefetch)
+  const [apiInfoPanel, setApiInfoPanel] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const raw = websiteData?.website;
+    if (!raw || !String(raw).trim()) return;
+
+    // ✅ IMPORTANT: PSI + server URL parsing need protocol
+    const safeUrl = String(raw).includes("://") ? String(raw) : `https://${String(raw)}`;
+
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch("/api/seo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: safeUrl }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) throw new Error(`API failed: ${res.status}`);
+
+        const json = await res.json();
+        setApiInfoPanel(json?.infoPanel ?? null);
+      } catch (e) {
+        // If aborted, ignore. Otherwise fallback to JSON / placeholders.
+        if (e?.name === "AbortError") return;
+        setApiInfoPanel(null);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [isOpen, websiteData?.website]);
 
   // outside click close (except when pinned)
   useEffect(() => {
@@ -392,6 +470,8 @@ export default function InfoPanel({
         setIsPinned(false);
         onClose && onClose();
       }
+      // reset apiInfoPanel when website changes
+      setApiInfoPanel(null);
       prevWebsite.current = curr;
     }
   }, [websiteData?.website, isDesktop, onClose, setIsPinned]);
@@ -427,13 +507,36 @@ export default function InfoPanel({
     };
   };
 
-  const stats = selected
+  // ✅ UPDATED: prefer API infoPanel (OpenPageRank + DataForSEO + PSI badge)
+  const stats = apiInfoPanel
+    ? {
+        domainAuthority: Number.isFinite(apiInfoPanel.domainAuthority)
+          ? Math.round(apiInfoPanel.domainAuthority)
+          : null,
+        organicTraffic: Number.isFinite(apiInfoPanel.organicTraffic)
+          ? Math.round(apiInfoPanel.organicTraffic)
+          : null, // placeholder expected -> null
+        organicKeyword: Number.isFinite(apiInfoPanel.organicKeyword)
+          ? Math.round(apiInfoPanel.organicKeyword)
+          : 0,
+        growth: apiInfoPanel.growth || null,
+        badge: apiInfoPanel.badge || null,
+      }
+    : selected
     ? {
         domainAuthority: Math.round(selected.domainRating ?? 0),
         organicTraffic: Math.round(selected.organicTrafficMonthly ?? 0),
         organicKeyword: Math.round(selected.organicKeywordsTotal ?? 0),
+        // dataset mode keeps previous behavior (random growth shown in UI)
+        growth: null,
+        badge: { label: "Good", tone: "success" },
       }
-    : generateRandomStats(websiteData?.website);
+    : {
+        ...generateRandomStats(websiteData?.website),
+        growth: null,
+        badge: { label: "Good", tone: "success" },
+      };
+
   const displayWebsite = websiteData?.website || "yourcompany.com";
 
   /* -------------------- STEP VIEWS -------------------- */
@@ -455,9 +558,11 @@ export default function InfoPanel({
 
         <div className="space-y-4">
           <ContentCard
-            title={`Domain Authority (${stats.domainAuthority})`}
+            title={`Domain Authority (${Number.isFinite(stats.domainAuthority) ? stats.domainAuthority : "--"})`}
             subtitle="Your site trust score (0–100)"
-            lines={[`${stats.domainAuthority} = above average for SMBs`]}
+            lines={[
+              `${Number.isFinite(stats.domainAuthority) ? stats.domainAuthority : "--"} = above average for SMBs`,
+            ]}
             badge={{ text: "Improve : Build Quality Backlinks", tone: "warning" }}
             videoTitle="How to Build Domain Authority"
             videoUrl={DEFAULT_VIDEO}
@@ -465,9 +570,11 @@ export default function InfoPanel({
           />
 
           <ContentCard
-            title={`Organic Traffic (${stats.organicTraffic})`}
+            title={`Organic Traffic (${Number.isFinite(stats.organicTraffic) ? stats.organicTraffic : "--"})`}
             subtitle="Monthly visits from free searches."
-            lines={[`${stats.organicTraffic} = visitors last month.`]}
+            lines={[
+              `${Number.isFinite(stats.organicTraffic) ? stats.organicTraffic : "--"} = visitors last month.`,
+            ]}
             badge={{ text: "Each organic visitor costs $0 vs $2–5 for ads.", tone: "warning" }}
             videoTitle="Turn Traffic Into Customers"
             videoUrl={DEFAULT_VIDEO}
@@ -576,7 +683,6 @@ export default function InfoPanel({
           poster="/assets/poster.png"
         />
       </div>
-
     </div>
   );
 
@@ -633,32 +739,37 @@ export default function InfoPanel({
   const renderStep5Slide2Content = renderStep5Content;
 
   /* -------------------- Render -------------------- */
-  // Gradient background like the original, with desktop width fixed and sm/md taking remaining space.
-  // Important: use lg:bg-[image:none] to override arbitrary bg-image at lg+.
   const basePos =
     "fixed top-0 h-screen z-40 flex flex-col " +
     "bg-[image:var(--brand-gradient)] bg-no-repeat bg-[size:100%_100%] " +
-    "left-[56px] w-[calc(100vw-56px)] " +           // phones: remaining width beside 56px rail
-    "md:left-[72px] md:w-[calc(100vw-72px)] " +     // tablets: beside 72px rail
-    "lg:left-[80px] lg:w-[430px] lg:bg-[image:none]"; // desktop: original look (no gradient image)
+    "left-[56px] w-[calc(100vw-56px)] " +
+    "md:left-[72px] md:w-[calc(100vw-72px)] " +
+    "lg:left-[80px] lg:w-[430px] lg:bg-[image:none]";
 
   return (
     <>
       {/* keep dark overlay for dark theme */}
       <div
         className="hidden dark:block fixed inset-0 -z-10 pointer-events-none bg-no-repeat bg-cover"
-        style={{ backgroundImage: "linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), var(--app-gradient-strong)" }}
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.45)), var(--app-gradient-strong)",
+        }}
       />
       <div
         ref={panelRef}
         aria-hidden={!isOpen}
-        className={`${basePos} transition-transform duration-300 ease-in-out ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`${basePos} transition-transform duration-300 ease-in-out ${
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
         {/* header */}
         <div className="flex items-center justify-between px-4 pt-6 bg-transparent">
           <div className="flex items-center gap-3">
             <BarChart2 className="text-[#111827]" size={26} />
-            <h3 className="text-xl font-black text-[#111827] dark:text-[var(--text)]">INFO</h3>
+            <h3 className="text-xl font-black text-[#111827] dark:text-[var(--text)]">
+              INFO
+            </h3>
           </div>
           <button
             onClick={() => setIsPinned((p) => !p)}
@@ -675,7 +786,11 @@ export default function InfoPanel({
         {/* body */}
         <div
           className="flex-1 overflow-y-auto p-4 bg-transparent"
-          style={{ height: "calc(100vh - 60px)", scrollbarWidth: "none", msOverflowStyle: "none" }}
+          style={{
+            height: "calc(100vh - 60px)",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+          }}
         >
           <style jsx>{`div::-webkit-scrollbar{display:none}`}</style>
 
