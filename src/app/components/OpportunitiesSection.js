@@ -107,6 +107,21 @@ const toWebsiteUrl = (domain) => {
   return `https://${d}`;
 };
 
+// ✅ NEW: normalize any url value so the editor+SEO pipeline can crawl it reliably
+const ensureHttpUrl = (input) => {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  return raw.includes("://") ? raw : `https://${raw}`;
+};
+
+// ✅ NEW: if API doesn't send url, build one from domain + slug
+const buildUrlFromDomainAndSlug = (domain, slug) => {
+  const d = normalizeDomain(domain || "");
+  if (!d) return "";
+  const s = String(slug || "").replace(/^\/+/, "");
+  return s ? `https://${d}/${s}` : `https://${d}`;
+};
+
 // Simple, predictable heuristics for UI metrics
 const estimateKeywords = (wordCount) => {
   const wc = Number(wordCount) || 0;
@@ -124,31 +139,50 @@ const scoreFromWordCount = (wordCount) => {
  * Convert API result item -> the slot object your existing UI expects.
  * (Keep fields that your Start flow uses: title, content, primaryKeyword, lsiKeywords, etc.)
  */
-function mapApiItemToSlot(item, fallbackTitle) {
+function mapApiItemToSlot(item, fallbackTitle, domain) {
   const title = item?.title || fallbackTitle || "Untitled";
   const wc = typeof item?.wordCount === "number" ? item.wordCount : 0;
 
+  const slug = item?.slug ? String(item.slug) : slugify(title);
+  const urlFromApi = item?.url ? ensureHttpUrl(item.url) : "";
+  const url = urlFromApi || buildUrlFromDomainAndSlug(domain, slug);
+
   return {
     title,
-    priority: "Medium Priority", // UI badge already recalculates based on score; keep stable label
+    priority: "Medium Priority",
     wordCount: wc,
     keywords: estimateKeywords(wc),
     score: scoreFromWordCount(wc),
-    status: "Draft",
-    content: "", // we are NOT storing full HTML here yet; editor can fetch per-url later if needed
-    slug: slugify(title),
+    status: item?.isDraft ? "Draft" : "Published",
+    content: "", // editor will hydrate via /api/seo -> content.html / rawText
+    slug,
 
-    // keep optional SEO fields (null/empty for now, can be filled later)
     primaryKeyword: null,
     lsiKeywords: [],
     plagiarism: null,
     searchVolume: null,
     keywordDifficulty: null,
 
-    // extra useful fields (won’t break UI)
-    url: item?.url || null,
+    // ✅ important for "Edit existing page": gives the editor a real crawlable URL
+    url,
     description: item?.description || "",
   };
+}
+
+function pickTopPublishedAndDraft(items = []) {
+  const published = items
+    .filter((i) => !i?.isDraft)
+    .sort((a, b) => (b.wordCount || 0) - (a.wordCount || 0));
+
+  const drafts = items
+    .filter((i) => i?.isDraft)
+    .sort((a, b) => (b.wordCount || 0) - (a.wordCount || 0));
+
+  if (drafts.length > 0) {
+    return [published[0] || null, drafts[0] || null].filter(Boolean);
+  }
+
+  return published.slice(0, 2);
 }
 
 /* ============================================================
@@ -436,14 +470,12 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       return {
         domain: normalizeDomain(json?.hostname || d),
         content: {
-          blog: [
-            mapApiItemToSlot(blogs[0], "Blog Opportunity 1"),
-            mapApiItemToSlot(blogs[1], "Blog Opportunity 2"),
-          ],
-          pages: [
-            mapApiItemToSlot(pages[0], "Page Opportunity 1"),
-            mapApiItemToSlot(pages[1], "Page Opportunity 2"),
-          ],
+          blog: pickTopPublishedAndDraft(blogs).map((item, i) =>
+            mapApiItemToSlot(item, `Blog Opportunity ${i + 1}`, d)
+          ),
+          pages: pickTopPublishedAndDraft(pages).map((item, i) =>
+            mapApiItemToSlot(item, `Page Opportunity ${i + 1}`, d)
+          ),
         },
       };
     };
@@ -452,8 +484,6 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       const d = normalizeDomain(domain);
       if (!d || d === "example.com") return;
 
-      // If this is a refetch after scan completion, keep the UI stable:
-      // don't clear rows; just flip loading text.
       setLoadingOpps(true);
       setOppsError("");
 
@@ -473,23 +503,19 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
           const id = json?.source?.scanId || "";
           if (alive) {
             setScanId(id);
-            // Keep placeholder tiles if we already have them; otherwise null.
             if (!seoRows) {
               setSeoRows(null);
               setMultiRows(null);
             }
           }
 
-          // Poll scan status; on complete refetch
           startPolling(id, {
             onComplete: () => {
               if (!alive) return;
-              // After scan completes, refetch opportunities (should be 200 cache)
               load({ refetchAfterScan: true }).catch(() => {});
             },
           });
 
-          // Keep loading state true (shows “Loading opportunities…” text)
           return;
         }
 
@@ -509,7 +535,6 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       } catch (e) {
         if (alive) {
           setOppsError(e?.message || "Failed to load opportunities");
-          // Only clear if this wasn't just a refresh attempt
           if (!refetchAfterScan) {
             setSeoRows(null);
             setMultiRows(null);
@@ -594,6 +619,15 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
         : null;
 
     const baseTitle = multiSlot?.title || seoSlot?.title || fallbackTitle;
+    const slug =
+      multiSlot?.slug ||
+      seoSlot?.slug ||
+      (baseTitle ? slugify(baseTitle) : undefined);
+
+    // ✅ make sure URL is always present so editor can crawl and extract content
+    const url =
+      ensureHttpUrl(multiSlot?.url || seoSlot?.url || "") ||
+      buildUrlFromDomainAndSlug(domain, slug);
 
     return {
       ...seoSlot,
@@ -605,10 +639,8 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       plagiarism,
       searchVolume,
       keywordDifficulty,
-      slug:
-        multiSlot?.slug ||
-        seoSlot?.slug ||
-        (baseTitle ? slugify(baseTitle) : undefined),
+      slug,
+      url,
     };
   };
 
@@ -621,7 +653,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       out.push(merged);
     }
     return out;
-  }, [selectedSeo, selectedMulti]);
+  }, [selectedSeo, selectedMulti, domain]);
 
   const pageCards = useMemo(() => {
     const seo = selectedSeo?.content?.pages ?? [];
@@ -632,7 +664,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       out.push(merged);
     }
     return out;
-  }, [selectedSeo, selectedMulti]);
+  }, [selectedSeo, selectedMulti, domain]);
 
   /* ---------- Start Flow helpers ---------- */
 
@@ -669,16 +701,22 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
 
   const handleEditExisting = () => {
     const real = startPayloadRef.current || {};
-    if (!real.title && !real.content) {
+    if (!real.title && !real.content && !real.url) {
       setStartOpen(false);
       return;
     }
+
+    // ✅ IMPORTANT:
+    // We intentionally pass content="" and let ContentEditor hydrate from /api/seo
+    // using the url that we pass here.
     dispatchOpen({
       title: real.title,
       slug: real.slug || (real.title ? slugify(real.title) : undefined),
       kind: real.kind || "blog",
       content: real.content || "",
       domain: real.domain || domain,
+      url: real.url ? ensureHttpUrl(real.url) : buildUrlFromDomainAndSlug(real.domain || domain, real.slug),
+
       primaryKeyword: real.primaryKeyword || null,
       lsiKeywords: real.lsiKeywords || [],
       plagiarism: typeof real.plagiarism === "number" ? real.plagiarism : null,
@@ -689,6 +727,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
           ? real.keywordDifficulty
           : null,
     });
+
     setStartOpen(false);
   };
 
@@ -698,11 +737,12 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
     const slug = slugify(base);
     const payload = {
       title: "Untitled",
-      content: "", // empty so CE.Canvas starts blank
+      content: "",
       kind: "blog",
       domain,
       slug,
       id: slug,
+      url: buildUrlFromDomainAndSlug(domain, slug),
     };
     dispatchOpen(payload);
     setStartOpen(false);
@@ -720,6 +760,7 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
       domain,
       slug,
       id: slug,
+      url: buildUrlFromDomainAndSlug(domain, slug),
     };
     dispatchOpen(payload);
     setStartOpen(false);
@@ -804,7 +845,11 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
         <div className="mt-3 flex items-center gap-2">
           <PriorityBadge score={score} />
           <span className="inline-flex items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[#F6F8FB] px-2.5 py-1 text-[12px] text-[var(--muted)]">
-            {status === "Published" ? <Check size={14} /> : <PencilLine size={14} />}
+            {status === "Published" ? (
+              <Check size={14} />
+            ) : (
+              <PencilLine size={14} />
+            )}
             {status}
           </span>
         </div>
@@ -834,20 +879,30 @@ export default function OpportunitiesSection({ onOpenContentEditor }) {
           <button
             onClick={() => {
               const titleForSlug = realTitle || displayTitle;
+              const slug =
+                data?.slug || (titleForSlug ? slugify(titleForSlug) : undefined);
+
+              // ✅ ensure URL is always stored so editor can crawl + extract
+              const url =
+                ensureHttpUrl(data?.url || "") ||
+                buildUrlFromDomainAndSlug(domain, slug);
+
               startPayloadRef.current = {
                 kind: type, // "blog" or "page"
                 title: realTitle || displayTitle,
-                slug:
-                  data?.slug ||
-                  (titleForSlug ? slugify(titleForSlug) : undefined),
+                slug,
                 content: data?.content || "",
                 domain,
+                url,
+
                 primaryKeyword: data?.primaryKeyword || null,
                 lsiKeywords: data?.lsiKeywords || [],
                 plagiarism:
                   typeof data?.plagiarism === "number" ? data.plagiarism : null,
                 searchVolume:
-                  typeof data?.searchVolume === "number" ? data.searchVolume : null,
+                  typeof data?.searchVolume === "number"
+                    ? data.searchVolume
+                    : null,
                 keywordDifficulty:
                   typeof data?.keywordDifficulty === "number"
                     ? data.keywordDifficulty

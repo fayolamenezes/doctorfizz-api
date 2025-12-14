@@ -15,7 +15,10 @@ export async function POST(req) {
     const allowSubdomains = Boolean(body?.allowSubdomains);
 
     if (!websiteUrl) {
-      return NextResponse.json({ error: "websiteUrl is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "websiteUrl is required" },
+        { status: 400 }
+      );
     }
 
     const hostname = getHostname(websiteUrl);
@@ -23,35 +26,65 @@ export async function POST(req) {
       return NextResponse.json({ error: "Invalid websiteUrl" }, { status: 400 });
     }
 
-    // 1) SnapshotStore first
-    const cached = getLatestOpportunities(hostname, { ttlMs: TTL_MS });
+    // ✅ include allowSubdomains in the cache key (prevents mixing modes)
+    const cacheKey = allowSubdomains ? `${hostname}::subdomains` : hostname;
+
+    // 1) SnapshotStore first (published only)
+    const cached = getLatestOpportunities(cacheKey, {
+      ttlMs: TTL_MS,
+      mode: "published",
+    });
+
     if (cached) {
-      return NextResponse.json({
+      const blogs = Array.isArray(cached.blogs) ? cached.blogs : [];
+      const pages = Array.isArray(cached.pages) ? cached.pages : [];
+
+      // ✅ If a scan is still running, return 202 so UI can poll instead of re-enqueueing
+      const scanStatus = cached.scan?.status;
+      const isInProgress =
+        scanStatus === "queued" ||
+        scanStatus === "running" ||
+        scanStatus === "pending";
+
+      const payload = {
         websiteUrl,
         hostname,
-        blogs: cached.blogs.map(({ url, title, description, wordCount }) => ({
+        blogs: blogs.map(({ url, title, description, wordCount, isDraft }) => ({
           url,
           title,
           description,
           wordCount,
+          isDraft: Boolean(isDraft),
         })),
-        pages: cached.pages.map(({ url, title, description, wordCount }) => ({
+        pages: pages.map(({ url, title, description, wordCount, isDraft }) => ({
           url,
           title,
           description,
           wordCount,
+          isDraft: Boolean(isDraft),
         })),
         source: {
-          scanId: cached.scan.scanId,
-          status: cached.scan.status,
-          diagnostics: cached.scan.diagnostics || {},
+          scanId: cached.scan?.scanId,
+          status: cached.scan?.status,
+          mode: cached.scan?.mode || "published",
+          provider: cached.scan?.provider || null,
+          diagnostics: cached.scan?.diagnostics || {},
           fromCache: true,
+          allowSubdomains,
         },
-      });
+      };
+
+      return NextResponse.json(payload, { status: isInProgress ? 202 : 200 });
     }
 
     // 2) Need scan → enqueue + return 202
-    const scan = enqueueOpportunitiesScan({ websiteUrl, allowSubdomains });
+    // ✅ IMPORTANT: await if this function is async
+    const scan = await enqueueOpportunitiesScan({
+      websiteUrl,
+      allowSubdomains,
+      // optional: pass cacheKey if your job wants it
+      cacheKey,
+    });
 
     return NextResponse.json(
       {
@@ -60,9 +93,10 @@ export async function POST(req) {
         blogs: [],
         pages: [],
         source: {
-          scanId: scan.scanId,
-          status: scan.status, // queued
+          scanId: scan?.scanId || null,
+          status: scan?.status || "queued",
           fromCache: false,
+          mode: "published",
           allowSubdomains,
         },
       },

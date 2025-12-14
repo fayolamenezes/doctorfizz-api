@@ -138,9 +138,12 @@ function mapRowToMini(row) {
 function formatNumber(num) {
   if (num === null || num === undefined || isNaN(num)) return "--";
   const abs = Math.abs(num);
-  if (abs >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + "B";
-  if (abs >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-  if (abs >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
+  if (abs >= 1_000_000_000)
+    return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + "B";
+  if (abs >= 1_000_000)
+    return (num / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (abs >= 1_000)
+    return (num / 1_000).toFixed(1).replace(/\.0$/, "") + "k";
   return String(num);
 }
 
@@ -182,7 +185,9 @@ function WebsiteStatsCard({ website, stats }) {
       <div className="flex items-center justify-between">
         <div className="text-[12px] tracking-wide text-gray-500 dark:text-[var(--muted)] font-medium">
           WEBSITE :
-          <span className="ml-2 text-[13px] font-semibold text-[#d45427]">{website}</span>
+          <span className="ml-2 text-[13px] font-semibold text-[#d45427]">
+            {website}
+          </span>
         </div>
         <span
           className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-[3px] ${badgeClass}`}
@@ -196,7 +201,10 @@ function WebsiteStatsCard({ website, stats }) {
         <div className="flex items-stretch divide-x divide-gray-200 dark:divide-[var(--extra-border-dark)]">
           {items.map((it, idx) => {
             const hasValue = Number.isFinite(it.value);
-            const g = typeof it.growth === "number" && Number.isFinite(it.growth) ? it.growth : null;
+            const g =
+              typeof it.growth === "number" && Number.isFinite(it.growth)
+                ? it.growth
+                : null;
             const showRealGrowth = g !== null;
             const arrowUp = showRealGrowth ? g >= 0 : hasValue ? it.value >= 70 : null;
 
@@ -262,7 +270,9 @@ function VideoRow({ title, author = "@itzfizz", onOpen, poster }) {
           <div className="text-[15px] font-semibold text-gray-900 dark:text-[var(--text)] truncate">
             {title}
           </div>
-          <div className="text-xs text-gray-500 dark:text-[var(--muted)]">{author}</div>
+          <div className="text-xs text-gray-500 dark:text-[var(--muted)]">
+            {author}
+          </div>
         </div>
 
         <div className="text-gray-400">⋯</div>
@@ -276,14 +286,16 @@ function ContentCard({
   title,
   subtitle,
   lines = [],
-  badge, // {text, tone: 'warning'|'info'|'success'}
+  badge,
   videoTitle,
   videoUrl = DEFAULT_VIDEO,
   author = "@itzfizz",
   rightBadgeIcon = "i",
-  poster, // NEW
+  poster,
+  extra, // ✅ NEW
 }) {
   const [open, setOpen] = useState(false);
+
   const badgeClass =
     badge?.tone === "warning"
       ? "bg-[#ffedd5] text-[#b45309] border border-[#fdba74]"
@@ -293,13 +305,17 @@ function ContentCard({
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-3 dark:bg-[var(--extra-input-dark)] border border-gray-200 dark:border-[var(--extra-border-dark)]">
-      {/* header + text content */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-[var(--text)]">{title}</div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-[var(--text)]">
+            {title}
+          </div>
           {subtitle && (
-            <div className="text-xs text-gray-500 dark:text-[var(--muted)] mt-0.5">{subtitle}</div>
+            <div className="text-xs text-gray-500 dark:text-[var(--muted)] mt-0.5">
+              {subtitle}
+            </div>
           )}
+
           {lines?.length > 0 && (
             <div className="mt-1 space-y-0.5">
               {lines.map((l, i) => (
@@ -309,21 +325,24 @@ function ContentCard({
               ))}
             </div>
           )}
+
+          {/* ✅ NEW: render extra content INSIDE the card */}
+          {extra ? <div className="mt-2">{extra}</div> : null}
         </div>
-        <div className="text-gray-400 dark:text-[var(--muted)] cursor-help select-none">{rightBadgeIcon}</div>
+
+        <div className="text-gray-400 dark:text-[var(--muted)] cursor-help select-none">
+          {rightBadgeIcon}
+        </div>
       </div>
 
-      {/* CTA / warning badge */}
       {badge?.text && (
         <div className={`mt-3 inline-flex items-center px-3 py-1.5 text-xs rounded-md ${badgeClass}`}>
           {badge.text}
         </div>
       )}
 
-      {/* video preview row with poster */}
       <VideoRow title={videoTitle} author={author} poster={poster} onOpen={() => setOpen(true)} />
 
-      {/* modal via portal (global overlay) */}
       <VideoModal
         open={open}
         title={videoTitle}
@@ -353,6 +372,28 @@ function useIsDesktop() {
   return isDesktop;
 }
 
+/* -------- DataForSEO fallback keyword extractor (fits your dataforseo.js shape) -------- */
+function extractTopKeywordsFromApiSeo(apiSeo) {
+  const items = apiSeo?.dataForSeo?.topKeywords;
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  const out = items
+    .map((it) => (typeof it?.keyword === "string" ? it.keyword.trim() : ""))
+    .filter(Boolean);
+
+  // dedupe case-insensitively, preserve order
+  const seen = new Set();
+  const deduped = [];
+  for (const kw of out) {
+    const key = kw.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(kw);
+  }
+
+  return deduped;
+}
+
 /* -------------------- Component -------------------- */
 export default function InfoPanel({
   isOpen,
@@ -369,8 +410,13 @@ export default function InfoPanel({
   const panelRef = useRef(null);
   const isDesktop = useIsDesktop();
 
-  // (optional) global video state if you add a top header play button later
   const [activeVideo, setActiveVideo] = useState(null);
+
+  // ✅ Tolerant website field: supports {website} OR {site}
+  const rawWebsite = useMemo(() => {
+    const w = websiteData?.website ?? websiteData?.site ?? "";
+    return typeof w === "string" ? w.trim() : "";
+  }, [websiteData?.website, websiteData?.site]);
 
   // load dataset (for stat numbers) - fallback
   const [rows, setRows] = useState(null);
@@ -383,7 +429,7 @@ export default function InfoPanel({
         const json = await res.json();
         const mapped = Array.isArray(json) ? json.map(mapRowToMini).filter(Boolean) : [];
         if (alive) setRows(mapped);
-      } catch (e) {
+      } catch {
         /* fallback to generated stats */
       }
     })();
@@ -394,46 +440,75 @@ export default function InfoPanel({
 
   const selected = useMemo(() => {
     if (!rows?.length) return null;
-    const key = normalizeDomain(websiteData?.website || "");
+    const key = normalizeDomain(rawWebsite || "");
     return rows.find((r) => r.domain === key) || rows.find((r) => r.domain === `www.${key}`) || null;
-  }, [rows, websiteData?.website]);
+  }, [rows, rawWebsite]);
 
-  // ✅ Option A: fetch /api/seo directly when InfoPanel opens (no window.__drfizzSeoPrefetch)
+  // ✅ Fetch /api/seo when panel is OPEN OR PINNED (not just open)
   const [apiInfoPanel, setApiInfoPanel] = useState(null);
 
+  // ✅ store full /api/seo response for keyword fallback
+  const [apiSeo, setApiSeo] = useState(null);
+
+  // ✅ Keyword suggestions: selected first, else DataForSEO fallback
+  const top3SelectedKeywords = useMemo(() => {
+    const arr = Array.isArray(keywordData) ? keywordData : [];
+    return arr.filter(Boolean).slice(0, 3);
+  }, [keywordData]);
+
+  const top3ApiKeywords = useMemo(() => {
+    const all = extractTopKeywordsFromApiSeo(apiSeo);
+    return all.slice(0, 3);
+  }, [apiSeo]);
+
+  const chosenKeywords = useMemo(() => {
+    return top3SelectedKeywords.length > 0 ? top3SelectedKeywords : top3ApiKeywords;
+  }, [top3SelectedKeywords, top3ApiKeywords]);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen && !isPinned) return;
+    if (!rawWebsite) return;
 
-    const raw = websiteData?.website;
-    if (!raw || !String(raw).trim()) return;
-
-    // ✅ IMPORTANT: PSI + server URL parsing need protocol
-    const safeUrl = String(raw).includes("://") ? String(raw) : `https://${String(raw)}`;
-
+    const safeUrl = rawWebsite.includes("://") ? rawWebsite : `https://${rawWebsite}`;
     const controller = new AbortController();
 
     (async () => {
       try {
+        const prefetched =
+          typeof window !== "undefined" ? window.__drfizzSeoPrefetch : null;
+
+        if (prefetched?.infoPanel) {
+          setApiSeo(prefetched);
+          setApiInfoPanel(prefetched.infoPanel);
+          return;
+        }
+
         const res = await fetch("/api/seo", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: safeUrl }),
+          body: JSON.stringify({
+            url: safeUrl,
+            providers: ["psi", "authority", "dataforseo"],
+            // ✅ FAST MODE: you’ll implement this in route.js + dataforseo.js
+            keywordsOnly: true,
+          }),
           signal: controller.signal,
         });
 
         if (!res.ok) throw new Error(`API failed: ${res.status}`);
 
         const json = await res.json();
+        setApiSeo(json);
         setApiInfoPanel(json?.infoPanel ?? null);
       } catch (e) {
-        // If aborted, ignore. Otherwise fallback to JSON / placeholders.
         if (e?.name === "AbortError") return;
+        setApiSeo(null);
         setApiInfoPanel(null);
       }
     })();
 
     return () => controller.abort();
-  }, [isOpen, websiteData?.website]);
+  }, [isOpen, isPinned, rawWebsite]);
 
   // outside click close (except when pinned)
   useEffect(() => {
@@ -450,33 +525,35 @@ export default function InfoPanel({
 
   /* ---------- Auto-pin only on DESKTOP; disable on tablet/mobile ---------- */
   const LAST_STEP = 6;
-  const hasWebsite = Boolean(websiteData?.website && String(websiteData.website).trim());
+  const hasWebsite = Boolean(rawWebsite);
+
   useEffect(() => {
-    if (!isDesktop) return; // only on desktop
+    if (!isDesktop) return;
     if (hasWebsite && typeof currentStep === "number" && currentStep <= LAST_STEP) {
       setIsPinned(true);
     }
   }, [hasWebsite, currentStep, setIsPinned, isDesktop]);
+
   useEffect(() => {
     if (!hasWebsite) setIsPinned(false);
   }, [hasWebsite, setIsPinned]);
 
-  // If website just changed on non-desktop, close & unpin to negate "auto open/pin" from submit
-  const prevWebsite = useRef(websiteData?.website || "");
+  // If website changed on non-desktop, close & unpin; reset api data
+  const prevWebsite = useRef(rawWebsite || "");
   useEffect(() => {
-    const curr = websiteData?.website || "";
+    const curr = rawWebsite || "";
     if (curr !== prevWebsite.current) {
       if (!isDesktop) {
         setIsPinned(false);
         onClose && onClose();
       }
-      // reset apiInfoPanel when website changes
+      setApiSeo(null);
       setApiInfoPanel(null);
       prevWebsite.current = curr;
     }
-  }, [websiteData?.website, isDesktop, onClose, setIsPinned]);
+  }, [rawWebsite, isDesktop, onClose, setIsPinned]);
 
-  // Unpin + close when Dashboard opens (desktop parity)
+  // Unpin + close when Dashboard opens
   useEffect(() => {
     if (currentStep === "dashboard") {
       setIsPinned(false);
@@ -484,7 +561,7 @@ export default function InfoPanel({
     }
   }, [currentStep, setIsPinned, onClose]);
 
-  // (optional) custom event fallback
+  // custom event fallback
   useEffect(() => {
     function handleDashboardOpen() {
       setIsPinned(false);
@@ -507,7 +584,6 @@ export default function InfoPanel({
     };
   };
 
-  // ✅ UPDATED: prefer API infoPanel (OpenPageRank + DataForSEO + PSI badge)
   const stats = apiInfoPanel
     ? {
         domainAuthority: Number.isFinite(apiInfoPanel.domainAuthority)
@@ -515,7 +591,7 @@ export default function InfoPanel({
           : null,
         organicTraffic: Number.isFinite(apiInfoPanel.organicTraffic)
           ? Math.round(apiInfoPanel.organicTraffic)
-          : null, // placeholder expected -> null
+          : null,
         organicKeyword: Number.isFinite(apiInfoPanel.organicKeyword)
           ? Math.round(apiInfoPanel.organicKeyword)
           : 0,
@@ -527,19 +603,57 @@ export default function InfoPanel({
         domainAuthority: Math.round(selected.domainRating ?? 0),
         organicTraffic: Math.round(selected.organicTrafficMonthly ?? 0),
         organicKeyword: Math.round(selected.organicKeywordsTotal ?? 0),
-        // dataset mode keeps previous behavior (random growth shown in UI)
         growth: null,
         badge: { label: "Good", tone: "success" },
       }
     : {
-        ...generateRandomStats(websiteData?.website),
+        ...generateRandomStats(rawWebsite),
         growth: null,
         badge: { label: "Good", tone: "success" },
       };
 
-  const displayWebsite = websiteData?.website || "yourcompany.com";
+  const displayWebsite = rawWebsite || "yourcompany.com";
 
   /* -------------------- STEP VIEWS -------------------- */
+
+  const KeywordsStrip = () => {
+    const isLoading = (isOpen || isPinned) && rawWebsite && apiSeo === null;
+    const hasAny = chosenKeywords.length > 0;
+
+    if (isLoading && !hasAny) {
+      return (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-orange-100 text-orange-800 border border-orange-200">
+            Loading…
+          </span>
+        </div>
+      );
+    }
+
+    if (!hasAny) {
+      return (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-100">
+            —
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {chosenKeywords.slice(0, 3).map((kw) => (
+          <span
+            key={kw}
+            className="px-2.5 py-1 rounded-md text-xs font-semibold bg-orange-500 text-white shadow-sm"
+            title={kw}
+          >
+            {kw}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   const renderStep1Content = () => (
     <div className="space-y-6">
@@ -594,15 +708,18 @@ export default function InfoPanel({
         </div>
         <h4 className="text-sm font-bold fixthis-title">FIX THIS</h4>
       </div>
+
       <div className="space-y-4">
         <ContentCard
           title="Why Industry Matters"
           subtitle="Personalized Benchmarks vs. relevant peers"
-          lines={["Keyword suggestion", "KEYWORD-1   KEYWORD-2   KEYWORD-3"]}
+          lines={["Keyword suggestion"]}
+          extra={<KeywordsStrip />}   // ✅ pills now inside this white card
           videoTitle="Industry SEO Strategies"
           videoUrl={DEFAULT_VIDEO}
           poster="/assets/poster.png"
         />
+
         <ContentCard
           title="Business Type Impact"
           lines={["Local vs. national focus", "Content and customer journey differences"]}
@@ -686,13 +803,6 @@ export default function InfoPanel({
     </div>
   );
 
-  const cleanLabel = (s) => (typeof s === "string" ? s.replace(/-\d+$/, "") : s);
-  const {
-    businessCompetitors = [],
-    searchCompetitors = [],
-    totalCompetitors = [],
-  } = competitorData || {};
-
   const renderStep5Content = () => {
     return (
       <div className="space-y-6">
@@ -714,10 +824,7 @@ export default function InfoPanel({
 
           <ContentCard
             title="Competitive Intelligence"
-            lines={[
-              "Strategy insights & gap analysis",
-              "Analyze your competitors' strengths and gaps",
-            ]}
+            lines={["Strategy insights & gap analysis", "Analyze your competitors' strengths and gaps"]}
             badge={{ text: "Analyse, Compare, Discover & Optimize.", tone: "warning" }}
             videoTitle="Spy on Competitors"
             videoUrl={DEFAULT_VIDEO}

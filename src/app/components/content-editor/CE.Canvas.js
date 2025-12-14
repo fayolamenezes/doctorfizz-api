@@ -14,13 +14,13 @@ const HL_ATTR = "data-ce-hl"; // marker attribute for our highlights
 
 const CECanvas = forwardRef(function CECanvas(
   {
-    docId,               // 👈 NEW: unique per page/document (slug/id)
+    docId, // 👈 unique per page/document (slug/id)
     title = "Untitled",
     content = "",
     setContent,
-    onTyping, // 👈 from parent
-    onFocusEditor, // 👈 from parent
-    onBlurEditor, // 👈 from parent
+    onTyping,
+    onFocusEditor,
+    onBlurEditor,
   },
   ref
 ) {
@@ -45,6 +45,7 @@ const CECanvas = forwardRef(function CECanvas(
 
   const suppressInputRef = useRef(false);
   const AUTOSAVE_MS = 800;
+
   // 🔑 Scope autosave per document, falling back to title/global
   const AUTOSAVE_KEY = `ce:autosave:${docId || title || "untitled"}`;
 
@@ -63,14 +64,19 @@ const CECanvas = forwardRef(function CECanvas(
       .join("");
   }
 
-  const isTrulyEmpty = useCallback(() => {
+  const isTrulyEmptyHtml = useCallback((html) => {
     return (
-      String(content || "")
+      String(html || "")
         .replace(/<[^>]*>/g, "")
         .replace(/&nbsp;/g, " ")
         .trim().length === 0
     );
-  }, [content]);
+  }, []);
+
+  const isTrulyEmpty = useCallback(() => isTrulyEmptyHtml(content), [
+    content,
+    isTrulyEmptyHtml,
+  ]);
 
   /** =========================
    * Selection helpers
@@ -241,6 +247,7 @@ const CECanvas = forwardRef(function CECanvas(
   function bubble({ pushHistory = true, notifyParent = true } = {}) {
     const el = editorRef.current;
     const html = el?.innerHTML || "";
+
     if (notifyParent && !suppressInputRef.current) {
       suppressInputRef.current = true;
       setContent?.(html);
@@ -250,6 +257,7 @@ const CECanvas = forwardRef(function CECanvas(
         suppressInputRef.current = false;
       });
     }
+
     if (pushHistory) {
       const last = undoStack.current[undoStack.current.length - 1];
       if (last !== html) {
@@ -257,6 +265,7 @@ const CECanvas = forwardRef(function CECanvas(
         redoStack.current = [];
       }
     }
+
     scheduleAutosave(html);
     saveSelectionSnapshot();
     scheduleHighlights();
@@ -272,10 +281,8 @@ const CECanvas = forwardRef(function CECanvas(
     // 1) No initial content => try per-doc autosave
     if (!seededRef.current && isTrulyEmpty()) {
       const saved =
-        typeof window !== "undefined"
-          ? localStorage.getItem(AUTOSAVE_KEY)
-          : null;
-      if (saved) {
+        typeof window !== "undefined" ? localStorage.getItem(AUTOSAVE_KEY) : null;
+      if (saved && !isTrulyEmptyHtml(saved)) {
         suppressInputRef.current = true;
         el.innerHTML = saved;
         setContent?.(saved);
@@ -306,7 +313,14 @@ const CECanvas = forwardRef(function CECanvas(
       seededRef.current = true;
       scheduleHighlights();
     }
-  }, [AUTOSAVE_KEY, isTrulyEmpty, setContent, content, scheduleHighlights]);
+  }, [
+    AUTOSAVE_KEY,
+    isTrulyEmpty,
+    isTrulyEmptyHtml,
+    setContent,
+    content,
+    scheduleHighlights,
+  ]);
 
   /** =========================
    * External sync
@@ -328,28 +342,42 @@ const CECanvas = forwardRef(function CECanvas(
     // If we *just* edited locally, don't let prop snap back and override typing
     const recentlyTyped =
       Date.now() - lastLocalEditAtRef.current < LOCAL_GRACE_MS;
-
     if (recentlyTyped || suppressInputRef.current) return;
 
-    // SAFETY: never overwrite a richer current DOM with a shorter prop snapshot
-    if (currentDom.length > htmlFromProp.length) {
+    // ✅ IMPORTANT: if parent content has become non-empty, we MUST reflect it,
+    // even if DOM currently has starter/noise; but we still avoid destroying richer DOM.
+    const propIsEmpty = isTrulyEmptyHtml(htmlFromProp);
+    const domIsEmpty = isTrulyEmptyHtml(currentDom);
+
+    if (!propIsEmpty) {
+      // If DOM is "longer" only because of starter list/noise, we still want the prop.
+      // The safest check is: only block overwrite if DOM is non-empty AND looks richer.
+      if (!domIsEmpty && currentDom.length > htmlFromProp.length * 1.35) {
+        // looks like user already edited more than the incoming prop; don't clobber
+        return;
+      }
+
+      suppressInputRef.current = true;
+      el.innerHTML = htmlFromProp;
+      lastLocalHtmlRef.current = htmlFromProp;
+      lastLocalEditAtRef.current = Date.now();
+
+      queueMicrotask(() => {
+        suppressInputRef.current = false;
+      });
+
+      undoStack.current.push(htmlFromProp);
+      redoStack.current = [];
+
+      scheduleHighlights();
       return;
     }
 
-    suppressInputRef.current = true;
-    el.innerHTML = htmlFromProp;
-    lastLocalHtmlRef.current = htmlFromProp;
+    // If prop is empty, never overwrite non-empty DOM
+    if (!domIsEmpty) return;
 
-    queueMicrotask(() => {
-      suppressInputRef.current = false;
-    });
-
-    undoStack.current.push(htmlFromProp);
-    redoStack.current = [];
-
-    // Don't touch caret here – avoids surprise jumps while editing
-    scheduleHighlights();
-  }, [content, scheduleHighlights]);
+    // Both empty -> no action
+  }, [content, scheduleHighlights, isTrulyEmptyHtml]);
 
   /** =========================
    * execCommand
@@ -470,23 +498,24 @@ const CECanvas = forwardRef(function CECanvas(
    * ========================= */
   useImperativeHandle(ref, () => ({
     exec: (cmd, value) => execCommand(cmd, value),
-    // Used by toolbar's ensureEditorFocus
     focusEditor: () => {
       const el = editorRef.current;
       if (!el) return;
       el.focus();
-      // If we have a stored selection, restore it; otherwise go to end
       if (savedRangeRef.current) {
         restoreSelectionSnapshot();
       } else {
         setCaretToEnd(el);
       }
     },
-    // Optional: gives direct access to the root node if needed
     root: editorRef.current,
   }));
 
-  const showStarter = isTrulyEmpty();
+  // ✅ Starter should only show if BOTH:
+  // - prop content is empty
+  // - editor DOM is empty
+  // This prevents the "Empty page" block from sticking around after SEO hydration.
+  const showStarter = isTrulyEmpty() && isTrulyEmptyHtml(editorRef.current?.innerHTML);
 
   return (
     <section

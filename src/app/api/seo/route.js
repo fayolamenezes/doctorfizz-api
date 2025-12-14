@@ -7,6 +7,9 @@ import { fetchSerp } from "@/lib/seo/serper";
 import { fetchDataForSeo } from "@/lib/seo/dataforseo";
 import { extractPageText } from "@/lib/seo/apyhub";
 
+// ✅ used to fetch rendered HTML + extract title
+import { fetchHtml, extractTitle } from "@/lib/seo/extraction";
+
 /**
  * Normalize any user input into a valid absolute URL string.
  * - "example.com"        -> "https://example.com"
@@ -28,9 +31,202 @@ function getDomainFromUrl(url) {
     if (!safe) return null;
     const u = new URL(safe);
     return u.hostname.replace(/^www\./, "");
-  } catch (e) {
+  } catch {
     return null;
   }
+}
+
+// Convert extracted plain text into simple HTML paragraphs (fallback only)
+function textToHtml(text) {
+  const safe = String(text || "").trim();
+  if (!safe) return "";
+
+  return safe
+    .split(/\n\s*\n/g)
+    .map((p) => {
+      const trimmed = p.trim();
+      if (!trimmed) return "";
+      const withBreaks = trimmed.replace(/\n/g, "<br/>");
+      return `<p>${withBreaks}</p>`;
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+/**
+ * Extract <body>...</body> inner HTML from a full HTML document (best-effort).
+ */
+function extractBodyInnerHtml(fullHtml) {
+  const html = String(fullHtml || "");
+  if (!html) return "";
+  const m = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  return m ? m[1] : html; // fallback to whole html if body missing
+}
+
+/**
+ * Make the rendered page HTML "editor-safe":
+ * - remove scripts/styles/noscript/svg/iframe etc
+ * - keep headings, paragraphs, lists, links, images, tables (basic)
+ * - strip most attributes except a small allowlist
+ *
+ * NOTE: This is regex-based (no DOM dependency). It’s “best effort”.
+ */
+function sanitizeHtmlForEditor(inputHtml) {
+  let html = String(inputHtml || "");
+  if (!html) return "";
+
+  // Drop very noisy/unsafe blocks
+  html = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, "")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, "")
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, "")
+    .replace(/<canvas[\s\S]*?<\/canvas>/gi, "")
+    .replace(/<form[\s\S]*?<\/form>/gi, "");
+
+  // Remove HTML comments
+  html = html.replace(/<!--[\s\S]*?-->/g, "");
+
+  // Remove header/nav/footer/aside that often pollutes imports (best-effort)
+  html = html
+    .replace(/<header[\s\S]*?<\/header>/gi, "")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+    .replace(/<aside[\s\S]*?<\/aside>/gi, "");
+
+  // Strip attributes we don’t want, but keep a small allowlist for some tags.
+  // 1) For all tags: remove on* handlers + style
+  html = html
+    .replace(/\son\w+\s*=\s*["'][\s\S]*?["']/gi, "")
+    .replace(/\sstyle\s*=\s*["'][\s\S]*?["']/gi, "");
+
+  // 2) For <a>: keep href, title, target, rel
+  html = html.replace(/<a\b([^>]*)>/gi, (m, attrs) => {
+    const href = (attrs.match(/\shref\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    const title =
+      (attrs.match(/\stitle\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    const target =
+      (attrs.match(/\starget\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    const rel = (attrs.match(/\srel\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    return `<a${href}${title}${target}${rel}>`;
+  });
+
+  // 3) For <img>: keep src, alt, title
+  html = html.replace(/<img\b([^>]*)>/gi, (m, attrs) => {
+    const src = (attrs.match(/\ssrc\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    const alt = (attrs.match(/\salt\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    const title =
+      (attrs.match(/\stitle\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+    return `<img${src}${alt}${title} />`;
+  });
+
+  // 4) For all other tags: remove most attrs
+  html = html.replace(/<([a-z0-9]+)\b([^>]*)>/gi, (m, tag, attrs) => {
+    const t = String(tag).toLowerCase();
+
+    const allowed = new Set([
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "u",
+      "s",
+      "blockquote",
+      "code",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "hr",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+      "a",
+      "img",
+      "figure",
+      "figcaption",
+      "span",
+      "div",
+    ]);
+
+    if (!allowed.has(t)) return `<div>`;
+    if (t === "a" || t === "img") return m;
+
+    if (t === "table") {
+      const border =
+        (attrs.match(/\sborder\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+      const cellpadding =
+        (attrs.match(/\scellpadding\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+      const cellspacing =
+        (attrs.match(/\scellspacing\s*=\s*["'][^"']*["']/i) || [])[0] || "";
+      return `<table${border}${cellpadding}${cellspacing}>`;
+    }
+
+    return `<${t}>`;
+  });
+
+  html = html.replace(/\n{3,}/g, "\n\n").trim();
+  return html;
+}
+
+/**
+ * Prefer rendered HTML for editor hydration (keeps formatting).
+ * Use ApyHub text only for rawText + fallback HTML.
+ */
+async function buildContentPayload(url) {
+  let title = null;
+  let htmlForEditor = "";
+  let rawText = "";
+
+  // 1) Rendered HTML (best for formatting)
+  try {
+    const fetched = await fetchHtml(url);
+    const fullHtml = fetched?.html || "";
+    title = extractTitle(fullHtml) || null;
+
+    const bodyInner = extractBodyInnerHtml(fullHtml);
+    const sanitized = sanitizeHtmlForEditor(bodyInner);
+
+    htmlForEditor = sanitized || "";
+  } catch {
+    // ignore; fallback later
+  }
+
+  // 2) ApyHub text (good for metrics / fallback HTML)
+  try {
+    const apyResult = await extractPageText(url);
+    rawText = (apyResult?.apyhub?.text || "").trim();
+  } catch {
+    // ignore
+  }
+
+  // 3) If we didn’t get usable HTML, fallback to text->html
+  if (!htmlForEditor) {
+    htmlForEditor = rawText ? textToHtml(rawText) : "";
+  }
+
+  if (!title && rawText) {
+    const firstLine = rawText.split("\n").map((s) => s.trim()).find(Boolean);
+    title = firstLine ? firstLine.slice(0, 120) : null;
+  }
+
+  return {
+    title: title || null,
+    rawText: rawText || "",
+    html: htmlForEditor || "",
+  };
 }
 
 // Simple helper to compute % difference vs a baseline value
@@ -49,15 +245,12 @@ function sseFormat(event, data) {
 
 /**
  * Try to extract a "domain authority" style score from OpenPageRank payload
- * (kept flexible so it works with different return shapes).
  */
 function pickAuthorityScore(openPageRankPayload) {
   if (!openPageRankPayload) return null;
 
-  // If your wrapper already returns a number
   if (typeof openPageRankPayload === "number") return openPageRankPayload;
 
-  // Common possible shapes
   const candidatePaths = [
     ["pageRank"],
     ["rank"],
@@ -93,7 +286,7 @@ function pickAuthorityScore(openPageRankPayload) {
   for (const path of candidatePaths) {
     const v = getAt(openPageRankPayload, path);
     if (typeof v === "number" && Number.isFinite(v)) {
-      if (v <= 10 && v >= 0) return Math.round(v * 10); // 0..100-ish
+      if (v <= 10 && v >= 0) return Math.round(v * 10);
       return v;
     }
     if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) {
@@ -108,11 +301,6 @@ function pickAuthorityScore(openPageRankPayload) {
 
 /**
  * Build InfoPanel metrics without GSC:
- * - Domain Authority: OpenPageRank-derived
- * - Organic Keyword: DataForSEO-derived (count of rows/topKeywords)
- * - Organic Traffic: placeholder
- * - Growth: derived vs baseline
- * - Badge: derived from PSI scores
  */
 function buildInfoPanel(unified) {
   const domainAuthority = pickAuthorityScore(
@@ -127,7 +315,6 @@ function buildInfoPanel(unified) {
 
   const organicTraffic = null;
 
-  // Baselines (tune later)
   const baseline = {
     domainAuthority: 40,
     organicKeyword: 200,
@@ -139,7 +326,10 @@ function buildInfoPanel(unified) {
       domainAuthority,
       baseline.domainAuthority
     ),
-    organicKeyword: computePercentGrowth(organicKeyword, baseline.organicKeyword),
+    organicKeyword: computePercentGrowth(
+      organicKeyword,
+      baseline.organicKeyword
+    ),
     organicTraffic: 0,
   };
 
@@ -160,7 +350,7 @@ function buildInfoPanel(unified) {
 
   const badge =
     avgPerf == null
-      ? { label: "Good", tone: "success" } // fallback (don’t break UI)
+      ? { label: "Good", tone: "success" }
       : avgPerf >= 70
       ? { label: "Good", tone: "success" }
       : avgPerf >= 50
@@ -176,18 +366,60 @@ function buildInfoPanel(unified) {
   };
 }
 
+// ✅ NEW: unify "seoRows" from different shapes safely
+function ensureSeoRows(unified) {
+  if (Array.isArray(unified.seoRows)) return;
+
+  // fetchDataForSeo returns { seoRows, dataForSeo: { topKeywords } }
+  if (Array.isArray(unified?.dataForSeo?.topKeywords)) {
+    unified.seoRows = unified.dataForSeo.topKeywords;
+    return;
+  }
+
+  // Sometimes result is nested if merged incorrectly
+  if (Array.isArray(unified?.dataforseo?.seoRows)) {
+    unified.seoRows = unified.dataforseo.seoRows;
+    return;
+  }
+}
+
+// ✅ NEW: merge helper for provider output that might be nested
+function mergeProviderResult(unified, providerKey, providerResult) {
+  if (!providerResult) return;
+
+  // Most of your providers already return top-level objects (technicalSeo etc.)
+  // DataForSEO returns { dataForSeo, seoRows }
+  // Authority returns OpenPageRank shape
+  // Serper returns serp shape
+  Object.assign(unified, providerResult);
+
+  if (providerKey === "authority" && unified.openPageRank == null) {
+    unified.openPageRank =
+      providerResult?.authority ??
+      providerResult?.openPageRank ??
+      providerResult;
+  }
+
+  ensureSeoRows(unified);
+}
+
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    // ✅ must be let so we can normalize url
     let {
       url,
       keyword,
       countryCode = "in",
       languageCode = "en",
       depth = 10,
-      // optional: limit what runs
+
+      // ✅ NEW:
+      // If true, we force DataForSEO into "keywordsOnly" mode
+      // so suggested keywords show up quickly (InfoPanel).
+      keywordsOnly = false,
+
+      // ✅ still supported
       providers = ["psi", "authority", "serper", "dataforseo", "content"],
     } = body || {};
 
@@ -198,7 +430,6 @@ export async function POST(request) {
       );
     }
 
-    // ✅ normalize here so PSI + content extractor stop failing on bare domains
     url = ensureHttpUrl(url);
     if (!url) {
       return NextResponse.json(
@@ -209,21 +440,16 @@ export async function POST(request) {
 
     const domain = getDomainFromUrl(url);
 
-    // SSE mode (Option B)
     const accept = request.headers.get("accept") || "";
     const wantsSSE = accept.includes("text/event-stream");
 
     // -------------------------
-    // NORMAL (existing) JSON MODE
+    // NORMAL JSON MODE
     // -------------------------
     if (!wantsSSE) {
-      // -----------------------------
-      // 1. CORE SEO CALLS IN PARALLEL
-      // -----------------------------
       const tasks = [];
 
       if (providers.includes("psi")) {
-        // Fetch PSI for both mobile and desktop, including CrUX field data
         tasks.push(
           (async () => {
             try {
@@ -233,7 +459,6 @@ export async function POST(request) {
               ]);
 
               const technicalSeo = {
-                // Lighthouse performance scores
                 performanceScoreMobile:
                   typeof mobile.performanceScore === "number"
                     ? mobile.performanceScore
@@ -242,18 +467,12 @@ export async function POST(request) {
                   typeof desktop.performanceScore === "number"
                     ? desktop.performanceScore
                     : null,
-
-                // Lab CWV (for your existing UI)
                 coreWebVitals:
                   mobile.coreWebVitalsLab || desktop.coreWebVitalsLab || {},
-
-                // CrUX field CWV (new)
                 coreWebVitalsField:
                   mobile.coreWebVitalsField ||
                   desktop.coreWebVitalsField ||
                   {},
-
-                // Aggregated issue counts from Lighthouse audits
                 issueCounts: {
                   critical:
                     (mobile.issueCounts?.critical ?? 0) +
@@ -298,13 +517,17 @@ export async function POST(request) {
       }
 
       if (providers.includes("dataforseo") && domain) {
-        // NOTE: fetchDataForSeo expects a domain/URL
-        // and returns { dataForSeo, seoRows }
         tasks.push(
           fetchDataForSeo(domain, {
             language_code: languageCode,
             countryCode,
             depth,
+
+            // ✅ NEW: fast mode
+            keywordsOnly: Boolean(keywordsOnly),
+
+            // Optional: keep subtopics ON by default
+            // includeSubtopics: true,
           }).then(
             (result) => ({ key: "dataforseo", ok: true, result }),
             (error) => ({ key: "dataforseo", ok: false, error: error.message })
@@ -314,61 +537,45 @@ export async function POST(request) {
 
       const coreResults = await Promise.all(tasks);
 
-      // Merge successful results
-      const unified = coreResults.reduce(
-        (acc, item) => {
-          if (item.ok && item.result) {
-            // merge this provider's normalized object into the unified payload
-            return { ...acc, ...item.result };
-          }
-          // collect per-provider errors
-          if (!item.ok) {
-            acc._errors = acc._errors || {};
-            acc._errors[item.key] = item.error;
-          }
+      const unified = coreResults.reduce((acc, item) => {
+        if (item.ok && item.result) {
+          // ✅ IMPORTANT: dataforseo provider returns { dataForSeo, seoRows }
+          // so we merge carefully
+          mergeProviderResult(acc, item.key, item.result);
           return acc;
-        },
-        {
-          // base object shape; you can predefine keys if you want
         }
-      );
 
-      // Preserve authority payload so buildInfoPanel can read it robustly
-      // (many projects store it under openPageRank)
-      const authorityOk = coreResults.find((r) => r.key === "authority" && r.ok);
-      if (authorityOk?.result && unified.openPageRank == null) {
-        // if the wrapper already returns {openPageRank:{...}} this is harmless
-        unified.openPageRank =
-          authorityOk.result.openPageRank ?? authorityOk.result;
-      }
-
-      // If DataForSEO only populated dataForSeo.topKeywords,
-      // expose them as seoRows for the "New on page SEO opportunity" table.
-      if (!unified.seoRows && Array.isArray(unified.dataForSeo?.topKeywords)) {
-        unified.seoRows = unified.dataForSeo.topKeywords;
-      }
+        if (!item.ok) {
+          acc._errors = acc._errors || {};
+          acc._errors[item.key] = item.error;
+        }
+        return acc;
+      }, {});
 
       // -----------------------------------------
-      // 2. CONTENT PIPELINE: APYHUB (TEXT ONLY)
+      // 2. CONTENT PIPELINE
       // -----------------------------------------
-      if (providers.includes("content")) {
+      if (providers.includes("content") && !keywordsOnly) {
+        // ✅ If keywordsOnly is true, you likely don't need content for InfoPanel,
+        // and skipping it makes response faster.
         try {
-          const apyResult = await extractPageText(url);
-          const text = (apyResult?.apyhub?.text || "").trim();
+          const content = await buildContentPayload(url);
 
-          if (text) {
+          if (content?.html || content?.title || content?.rawText) {
             unified.content = {
-              // raw extracted text for Canvas / Optimize / keyword analysis
-              rawText: text,
+              rawText: content.rawText || "",
+              html: content.html || "",
+              title: content.title || null,
+              source: content.html ? "rendered_html" : "text_fallback",
             };
           } else {
             unified._warnings = unified._warnings || [];
-            unified._warnings.push("No text extracted from ApyHub");
+            unified._warnings.push("No title/html/text extracted (content empty)");
           }
         } catch (err) {
           unified._errors = unified._errors || {};
           unified._errors.contentPipeline =
-            err.message || "Content pipeline (ApyHub) failed";
+            err?.message || "Content pipeline failed";
         }
       }
 
@@ -377,19 +584,13 @@ export async function POST(request) {
       // -----------------------------------------
       const technicalIssueCounts = unified.technicalSeo?.issueCounts || {};
 
-      // 🔸 Simple heuristic from content length (no IBM / MeaningCloud)
       let recommendationsCount = 0;
       let contentOppsCount = 0;
 
       const rawText = (unified.content?.rawText || "").trim();
-
       if (rawText) {
         const wordCount = rawText.split(/\s+/).length;
-
-        // Rough: 1 "recommendation" per ~300 words (min 3)
         recommendationsCount = Math.max(3, Math.round(wordCount / 300));
-
-        // Rough: 1 "content opportunity" per ~1200 words (min 1)
         contentOppsCount = Math.max(1, Math.round(wordCount / 1200));
       }
 
@@ -408,10 +609,8 @@ export async function POST(request) {
 
       // -----------------------------------------
       // 4. MOCKED GROWTH PERCENTAGES FOR DASHBOARD
-      //    Uses current API-driven values vs old baseline demo values
       // -----------------------------------------
       const baselineIssues = {
-        // these are the old hardcoded demo numbers from the dashboard
         critical: 274,
         warning: 883,
         recommendations: 77,
@@ -437,10 +636,8 @@ export async function POST(request) {
         ),
       };
 
-      // ✅ NEW: InfoPanel payload (NO GSC)
       unified.infoPanel = buildInfoPanel(unified);
 
-      // Include basic meta for debugging / UI
       unified._meta = {
         url,
         domain,
@@ -449,6 +646,7 @@ export async function POST(request) {
         languageCode,
         depth,
         providers,
+        keywordsOnly: Boolean(keywordsOnly),
         generatedAt: new Date().toISOString(),
       };
 
@@ -456,7 +654,7 @@ export async function POST(request) {
     }
 
     // -------------------------
-    // SSE STREAMING MODE (Option B)
+    // SSE STREAMING MODE
     // -------------------------
     const encoder = new TextEncoder();
 
@@ -467,7 +665,6 @@ export async function POST(request) {
         };
 
         try {
-          // Tell client we're starting
           send("status", {
             stage: "start",
             message: "Starting SEO pipeline…",
@@ -475,17 +672,15 @@ export async function POST(request) {
             domain,
             keyword: keyword || null,
             providers,
+            keywordsOnly: Boolean(keywordsOnly),
           });
 
-          // Base unified payload
           const unified = {};
 
-          // helper: run and emit per provider
           const runProvider = async (key, label, fn) => {
             send("status", { stage: key, state: "start", message: label });
             try {
               const result = await fn();
-              // IMPORTANT: do not append "done" to message; keep label as-is
               send("status", { stage: key, state: "done", message: label });
               return { key, ok: true, result };
             } catch (error) {
@@ -495,10 +690,9 @@ export async function POST(request) {
             }
           };
 
-          // 1) CORE providers in parallel, but streamed as each completes
           const corePromises = [];
 
-          if (providers.includes("psi")) {
+          if (providers.includes("psi") && !keywordsOnly) {
             corePromises.push(
               runProvider(
                 "psi",
@@ -548,7 +742,7 @@ export async function POST(request) {
             );
           }
 
-          if (providers.includes("serper") && keyword) {
+          if (providers.includes("serper") && keyword && !keywordsOnly) {
             corePromises.push(
               runProvider("serper", "Fetching SERP results…", async () => {
                 return await fetchSerp(keyword);
@@ -560,12 +754,15 @@ export async function POST(request) {
             corePromises.push(
               runProvider(
                 "dataforseo",
-                "Fetching DataForSEO keywords & opportunities…",
+                keywordsOnly
+                  ? "Fetching DataForSEO suggested keywords (fast)…"
+                  : "Fetching DataForSEO keywords & opportunities…",
                 async () => {
                   return await fetchDataForSeo(domain, {
                     language_code: languageCode,
                     countryCode,
                     depth,
+                    keywordsOnly: Boolean(keywordsOnly),
                   });
                 }
               )
@@ -574,45 +771,34 @@ export async function POST(request) {
 
           const coreResults = await Promise.all(corePromises);
 
-          // Merge results
           for (const item of coreResults) {
             if (item.ok && item.result) {
-              Object.assign(unified, item.result);
-
-              // Preserve authority payload so buildInfoPanel can read it robustly
-              if (item.key === "authority" && unified.openPageRank == null) {
-                unified.openPageRank =
-                  item.result?.openPageRank ?? item.result;
-              }
+              mergeProviderResult(unified, item.key, item.result);
             } else if (!item.ok) {
               unified._errors = unified._errors || {};
               unified._errors[item.key] = item.error;
             }
           }
 
-          // If DataForSEO only populated dataForSeo.topKeywords,
-          // expose them as seoRows for the "New on page SEO opportunity" table.
-          if (
-            !unified.seoRows &&
-            Array.isArray(unified.dataForSeo?.topKeywords)
-          ) {
-            unified.seoRows = unified.dataForSeo.topKeywords;
-          }
-
-          // 2) Content pipeline (sequential)
-          if (providers.includes("content")) {
+          // 2) Content pipeline
+          if (providers.includes("content") && !keywordsOnly) {
             send("status", {
               stage: "content",
               state: "start",
-              message: "Extracting page content (text)…",
+              message: "Extracting page content (title + rendered HTML)…",
             });
 
             try {
-              const apyResult = await extractPageText(url);
-              const text = (apyResult?.apyhub?.text || "").trim();
+              const content = await buildContentPayload(url);
 
-              if (text) {
-                unified.content = { rawText: text };
+              if (content?.html || content?.title || content?.rawText) {
+                unified.content = {
+                  rawText: content.rawText || "",
+                  html: content.html || "",
+                  title: content.title || null,
+                  source: content.html ? "rendered_html" : "text_fallback",
+                };
+
                 send("status", {
                   stage: "content",
                   state: "done",
@@ -620,26 +806,25 @@ export async function POST(request) {
                 });
               } else {
                 unified._warnings = unified._warnings || [];
-                unified._warnings.push("No text extracted from ApyHub");
+                unified._warnings.push("No title/html/text extracted (content empty)");
                 send("status", {
                   stage: "content",
                   state: "done",
-                  message: "No text extracted (continuing)",
+                  message: "No content extracted (continuing)",
                 });
               }
             } catch (err) {
               unified._errors = unified._errors || {};
               unified._errors.contentPipeline =
-                err.message || "Content pipeline (ApyHub) failed";
+                err?.message || "Content pipeline failed";
               send("status", {
                 stage: "content",
                 state: "error",
-                message: err.message || "Content pipeline (ApyHub) failed",
+                message: err?.message || "Content pipeline failed",
               });
             }
           }
 
-          // 3) Normalized issue counts
           send("status", {
             stage: "finalize",
             state: "start",
@@ -651,10 +836,9 @@ export async function POST(request) {
           let recommendationsCount = 0;
           let contentOppsCount = 0;
 
-          const rawText = (unified.content?.rawText || "").trim();
-
-          if (rawText) {
-            const wordCount = rawText.split(/\s+/).length;
+          const rawText2 = (unified.content?.rawText || "").trim();
+          if (rawText2) {
+            const wordCount = rawText2.split(/\s+/).length;
             recommendationsCount = Math.max(3, Math.round(wordCount / 300));
             contentOppsCount = Math.max(1, Math.round(wordCount / 1200));
           }
@@ -698,7 +882,6 @@ export async function POST(request) {
             ),
           };
 
-          // ✅ NEW: InfoPanel payload (NO GSC)
           unified.infoPanel = buildInfoPanel(unified);
 
           unified._meta = {
@@ -709,6 +892,7 @@ export async function POST(request) {
             languageCode,
             depth,
             providers,
+            keywordsOnly: Boolean(keywordsOnly),
             generatedAt: new Date().toISOString(),
           };
 
@@ -718,12 +902,9 @@ export async function POST(request) {
             message: "Finalized",
           });
 
-          // Final payload
           send("done", { unified });
-
           controller.close();
         } catch (err) {
-          // fatal stream error
           try {
             controller.enqueue(
               encoder.encode(
@@ -733,9 +914,7 @@ export async function POST(request) {
                 })
               )
             );
-          } catch {
-            // ignore
-          }
+          } catch {}
           controller.close();
         }
       },

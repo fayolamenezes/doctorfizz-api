@@ -1,44 +1,149 @@
 // src/lib/seo/jobs/scan-opportunities.js
-import { discoverOpportunitiesUrls, normalizeToHttps, getHostname } from "@/lib/seo/discovery";
-import { createScan, completeScan, failScan, upsertOpportunitiesSnapshot } from "@/lib/seo/snapshots.store";
+import {
+  discoverOpportunitiesUrls,
+  normalizeToHttps,
+  getHostname,
+} from "@/lib/seo/discovery";
+import {
+  createScan,
+  completeScan,
+  failScan,
+  upsertOpportunitiesSnapshot,
+  // OPTIONAL (if you have it): getLatestOpportunities
+  // getLatestOpportunities,
+} from "@/lib/seo/snapshots.store";
 
-export function enqueueOpportunitiesScan({ websiteUrl, allowSubdomains = false } = {}) {
+/**
+ * In-flight dedupe (module-level, survives within a single Node process).
+ * Keyed by hostname + allowSubdomains + mode.
+ *
+ * NOTE:
+ * - This prevents repeated scans from React StrictMode / re-renders / multi-calls.
+ * - If you're running multiple server instances, you still need store-level dedupe
+ *   (in snapshots.store). This is still a big improvement.
+ */
+const IN_FLIGHT = new Map();
+
+function makeInFlightKey({ hostname, allowSubdomains, mode }) {
+  return `opportunities|${hostname}|sub=${allowSubdomains ? 1 : 0}|mode=${mode}`;
+}
+
+export function enqueueOpportunitiesScan({
+  websiteUrl,
+  allowSubdomains = false,
+} = {}) {
   const normalized = normalizeToHttps(websiteUrl);
   const hostname = getHostname(normalized);
-  if (!normalized || !hostname) {
-    throw new Error("Invalid websiteUrl");
+  if (!normalized || !hostname) throw new Error("Invalid websiteUrl");
+
+  const mode = "published";
+  const key = makeInFlightKey({ hostname, allowSubdomains, mode });
+
+  // ✅ If a scan is already running/queued in this process, return it and DO NOT start another.
+  const existing = IN_FLIGHT.get(key);
+  if (existing?.scanId && (existing.status === "queued" || existing.status === "running")) {
+    return existing;
   }
 
+  // Create a new scan record (your existing store function)
   const scan = createScan({
     kind: "opportunities",
     websiteUrl: normalized,
     hostname,
     allowSubdomains,
+    mode,
   });
 
-  // Fire-and-forget (works in dev / long-lived node runtime).
-  // If you deploy serverless, replace this with a real queue/worker.
-  runOpportunitiesScan({ scanId: scan.scanId, websiteUrl: normalized, allowSubdomains }).catch(() => {});
+  // ✅ Write an immediate snapshot so the API route can return "cached" while scanning.
+  // This prevents the route from thinking "no cached snapshot exists" and re-enqueuing.
+  upsertOpportunitiesSnapshot(hostname, {
+    scanId: scan.scanId,
+    status: "queued",
+    mode,
+    allowSubdomains,
+    diagnostics: { stage: "queued" },
+    blogs: [],
+    pages: [],
+  });
+
+  // track in-flight
+  IN_FLIGHT.set(key, { ...scan, status: "queued" });
+
+  // best-effort fire-and-forget
+  runOpportunitiesScan({
+    inFlightKey: key,
+    scanId: scan.scanId,
+    websiteUrl: normalized,
+    allowSubdomains,
+    mode,
+  }).catch(() => {});
+
   return scan;
 }
 
-async function runOpportunitiesScan({ scanId, websiteUrl, allowSubdomains }) {
-  try {
-    const hostname = getHostname(websiteUrl);
+async function runOpportunitiesScan({
+  inFlightKey,
+  scanId,
+  websiteUrl,
+  allowSubdomains,
+  mode,
+}) {
+  const hostname = getHostname(websiteUrl);
 
+  // ✅ mark running early (so API can return cached instead of enqueue again)
+  try {
+    upsertOpportunitiesSnapshot(hostname, {
+      scanId,
+      status: "running",
+      mode,
+      allowSubdomains,
+      diagnostics: { stage: "discovery" },
+      blogs: [],
+      pages: [],
+    });
+    IN_FLIGHT.set(inFlightKey, { scanId, status: "running" });
+  } catch {
+    // ignore snapshot write errors
+  }
+
+  try {
     const discovery = await discoverOpportunitiesUrls({
       websiteUrl,
       allowSubdomains,
       crawlFallbackFn: simpleCrawlFallback,
     });
 
-    const blogMeta = await fetchManyMeta(discovery.blogUrls, hostname, allowSubdomains);
-    const pageMeta = await fetchManyMeta(discovery.pageUrls, hostname, allowSubdomains);
+    // update stage
+    try {
+      upsertOpportunitiesSnapshot(hostname, {
+        scanId,
+        status: "running",
+        mode,
+        allowSubdomains,
+        diagnostics: { ...discovery?.diagnostics, stage: "fetch-meta" },
+        blogs: [],
+        pages: [],
+      });
+    } catch {}
 
+    const blogMeta = await fetchManyMeta(
+      discovery.blogUrls,
+      hostname,
+      allowSubdomains
+    );
+    const pageMeta = await fetchManyMeta(
+      discovery.pageUrls,
+      hostname,
+      allowSubdomains
+    );
+
+    // ✅ complete snapshot
     upsertOpportunitiesSnapshot(hostname, {
       scanId,
       status: "complete",
       diagnostics: discovery.diagnostics,
+      mode,
+      allowSubdomains,
       blogs: blogMeta,
       pages: pageMeta,
     });
@@ -47,15 +152,39 @@ async function runOpportunitiesScan({ scanId, websiteUrl, allowSubdomains }) {
       hostname,
       diagnostics: discovery.diagnostics,
     });
+
+    IN_FLIGHT.set(inFlightKey, { scanId, status: "complete" });
+
+    // clean up shortly after completion
+    setTimeout(() => IN_FLIGHT.delete(inFlightKey), 30_000).unref?.();
   } catch (err) {
+    // ✅ mark failed snapshot too (important: otherwise API sees "no cache" and enqueues again)
+    try {
+      upsertOpportunitiesSnapshot(hostname, {
+        scanId,
+        status: "failed",
+        mode,
+        allowSubdomains,
+        diagnostics: { error: err?.message || "scan failed", stage: "failed" },
+        blogs: [],
+        pages: [],
+      });
+    } catch {}
+
     failScan(scanId, { error: err?.message || "scan failed" });
+    IN_FLIGHT.set(inFlightKey, { scanId, status: "failed" });
+
+    setTimeout(() => IN_FLIGHT.delete(inFlightKey), 30_000).unref?.();
   }
 }
 
 // ---------------------------
 // Minimal controlled crawl fallback
 // ---------------------------
-async function simpleCrawlFallback(hostname, { maxCrawlPages = 60, allowSubdomains = false } = {}) {
+async function simpleCrawlFallback(
+  hostname,
+  { maxCrawlPages = 60, allowSubdomains = false } = {}
+) {
   const seed = `https://${hostname}/`;
   const visited = new Set();
   const queue = [seed];
@@ -79,10 +208,10 @@ async function simpleCrawlFallback(hostname, { maxCrawlPages = 60, allowSubdomai
       if (!link) continue;
       if (visited.has(link)) continue;
 
-      // keep only same hostname unless allowSubdomains
       try {
         const h = new URL(link).hostname.replace(/^www\./, "").toLowerCase();
-        if (h !== hostname && !(allowSubdomains && h.endsWith(`.${hostname}`))) continue;
+        if (h !== hostname && !(allowSubdomains && h.endsWith(`.${hostname}`)))
+          continue;
       } catch {
         continue;
       }
@@ -106,7 +235,8 @@ function extractLinks(html, baseUrl) {
       href.startsWith("mailto:") ||
       href.startsWith("tel:") ||
       href.startsWith("javascript:")
-    ) continue;
+    )
+      continue;
 
     try {
       out.push(new URL(href, baseUrl).toString());
@@ -127,7 +257,6 @@ async function fetchManyMeta(urls, hostname, allowSubdomains) {
     if (meta) metas.push(meta);
   }
 
-  // If we still have duplicates, dedupe by URL
   const seen = new Set();
   return metas.filter((m) => {
     if (seen.has(m.url)) return false;
@@ -137,17 +266,16 @@ async function fetchManyMeta(urls, hostname, allowSubdomains) {
 }
 
 async function fetchMeta(url, hostname, allowSubdomains) {
-  // safety: host check again
+  // host check
   try {
     const h = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
-    if (h !== hostname && !(allowSubdomains && h.endsWith(`.${hostname}`))) return null;
+    if (h !== hostname && !(allowSubdomains && h.endsWith(`.${hostname}`)))
+      return null;
   } catch {
     return null;
   }
 
   const res = await safeFetch(url, { timeoutMs: 15000 });
-
-  // ✅ DO NOT SAVE 404/500 titles into “blogs”
   if (!res || !res.ok) return null;
 
   const html = await res.text().catch(() => "");
@@ -157,7 +285,7 @@ async function fetchMeta(url, hostname, allowSubdomains) {
   const description = extractMetaDescription(html) || "";
   const wordCount = estimateWordCount(html);
 
-  return { url, title, description, wordCount };
+  return { url, title, description, wordCount, isDraft: false };
 }
 
 function extractTitle(html) {

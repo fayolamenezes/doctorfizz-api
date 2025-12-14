@@ -71,13 +71,10 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   }, []);
 
   /* page config lookup key(s) */
-  const rawPageKey =
-    data?.slug || data?.page || data?.id || data?.title || "";
+  const rawPageKey = data?.slug || data?.page || data?.id || data?.title || "";
   const pageKey = norm(rawPageKey);
   // slugified version of title: "SEO Research Services Overview" -> "seo-research-services-overview"
-  const titleSlugKey = data?.title
-    ? norm(data.title).replace(/\s+/g, "-")
-    : "";
+  const titleSlugKey = data?.title ? norm(data.title).replace(/\s+/g, "-") : "";
 
   const pageConfig = useMemo(() => {
     if (!config?.length && !config?.pages?.length) return null;
@@ -190,11 +187,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   );
 
   const WORD_TARGET_FROM_DATA =
-    data?.metrics?.wordTarget ??
-    //               vvvvvvvvvvv  <-- added
-    data?.wordTarget ??
-    pageConfig?.wordTarget ??
-    1480;
+    data?.metrics?.wordTarget ?? data?.wordTarget ?? pageConfig?.wordTarget ?? 1480;
 
   // Initial plagiarism pulled from data (multi-content) when available
   const [metrics, setMetrics] = useState(() => ({
@@ -219,19 +212,23 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   const restoredRef = useRef(false);
   const newDocRef = useRef(false);
 
+  // ✅ NEW: a stateful "restored" flag so SEO hydration doesn't miss the moment
+  const [restored, setRestored] = useState(false);
+
+  // ✅ ensure we hydrate from SEO content only once per opened doc
+  const hydratedFromSeoRef = useRef(false);
+  useEffect(() => {
+    hydratedFromSeoRef.current = false;
+  }, [docId, editorSessionId]);
+
   // ------------------------------------------------------------------
   // Persist the current domain to localStorage for the Research panel.
   const pageDomain = data?.domain || pageConfig?.domain || "";
   useEffect(() => {
     if (!pageDomain) return;
     try {
-      localStorage.setItem(
-        "websiteData",
-        JSON.stringify({ site: pageDomain })
-      );
-    } catch {
-      // Ignore storage errors (e.g., SSR or private mode)
-    }
+      localStorage.setItem("websiteData", JSON.stringify({ site: pageDomain }));
+    } catch {}
   }, [pageDomain]);
 
   // ------------------------------------------------------------------
@@ -306,6 +303,76 @@ export default function ContentEditor({ data, onBackToDashboard }) {
     console.log("[ContentEditor] seo", { seo, seoLoading, seoError });
   }, [seo, seoLoading, seoError]);
 
+  // ✅ Hydrate editor content (and optionally title) from SEO extraction
+  // Fixes: "Empty page" starter still showing (hydration was getting skipped if seo arrived early)
+  useEffect(() => {
+    if (!restored) return; // IMPORTANT: stateful, not ref-only
+    if (newDocRef.current) return;
+    if (hydratedFromSeoRef.current) return;
+
+    // Only hydrate if incoming payload did NOT already bring content
+    const hasPayloadContent =
+      typeof data?.content === "string" && data.content.trim();
+    if (hasPayloadContent) return;
+
+    // Only hydrate if current content is blank-ish
+    if (!isBlankHtml(content)) return;
+
+    const extractedHtml =
+      typeof seo?.content?.html === "string" ? seo.content.html.trim() : "";
+    const extractedText =
+      typeof seo?.content?.rawText === "string" ? seo.content.rawText.trim() : "";
+
+    // Prefer HTML (from API), fallback to raw text (Canvas will still handle it)
+    const nextContent = extractedHtml || extractedText;
+
+    if (nextContent) {
+      // 1) Update editor state (this will make CE.Canvas hide the starter)
+      setContent(nextContent);
+      setLastEdited("just now");
+      hydratedFromSeoRef.current = true;
+
+      // 2) Persist immediately so CE.Canvas autosave seeding can't "win" with empty content
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            title,
+            content: nextContent,
+            query,
+          })
+        );
+      } catch {}
+
+      // 3) Also write into CE.Canvas autosave scope (it uses this exact key)
+      try {
+        const AUTOSAVE_KEY = `ce:autosave:${docId || title || "untitled"}`;
+        localStorage.setItem(AUTOSAVE_KEY, String(nextContent));
+      } catch {}
+    }
+
+    // Optional: hydrate title only if current title is a placeholder AND we got an extracted title
+    const extractedTitle =
+      typeof seo?.content?.title === "string" ? seo.content.title.trim() : "";
+    const titleIsPlaceholder = !title || title === "Untitled";
+    const noIncomingTitle = !data?.title;
+
+    if (extractedTitle && (titleIsPlaceholder || noIncomingTitle)) {
+      setTitle(extractedTitle);
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            title: extractedTitle,
+            content: nextContent || content,
+            query,
+          })
+        );
+      } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, seo, data?.content, data?.title, docId]);
+
   // Track previous incoming data.title to avoid clobbering user edits
   const prevDataTitleRef = useRef(data?.title);
 
@@ -376,6 +443,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
     } catch {}
 
     restoredRef.current = true;
+    setRestored(true); // ✅ this triggers SEO hydration reliably
   }, [WORD_TARGET_FROM_DATA, STORAGE_KEY, hasIncomingData]);
 
   // Persist minimal state on edits (does NOT include activeTab/seoMode to keep scope small)
@@ -410,10 +478,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
         wordCount: 0,
         lsiKeywords: 0,
         wordTarget:
-          data?.metrics?.wordTarget ??
-          data?.wordTarget ??
-          pageConfig?.wordTarget ??
-          1480,
+          data?.metrics?.wordTarget ?? data?.wordTarget ?? pageConfig?.wordTarget ?? 1480,
       }));
       try {
         localStorage.setItem(
@@ -517,14 +582,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
     if (nextPlagiarism !== metrics.plagiarism) {
       setMetrics((m) => ({ ...m, plagiarism: nextPlagiarism }));
     }
-  }, [
-    data,
-    pageConfig,
-    query,
-    metrics.wordTarget,
-    metrics.plagiarism,
-    content,
-  ]);
+  }, [data, pageConfig, query, metrics.wordTarget, metrics.plagiarism, content]);
 
   /* ===========================
      Resolve navbar SV / KD
@@ -589,9 +647,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
             parsed?.value ||
             "";
         }
-      } catch {
-        // ignore storage / parse errors
-      }
+      } catch {}
     }
 
     // Persist the (possibly fallback) domain back into storage
@@ -601,9 +657,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
           "websiteData",
           JSON.stringify({ site: effectiveDomain })
         );
-      } catch {
-        // ignore storage errors
-      }
+      } catch {}
     }
 
     // Emit the custom event your Home() listener uses
@@ -613,9 +667,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
           detail: { domain: effectiveDomain || null },
         })
       );
-    } catch {
-      // ignore event errors
-    }
+    } catch {}
 
     // Call the prop so Home can switch step → "dashboard"
     onBackToDashboard?.();

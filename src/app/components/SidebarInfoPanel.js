@@ -35,7 +35,6 @@ const SidebarInfoPanel = forwardRef(function SidebarInfoPanel(
 
       {/* Info panel stays the same */}
       <InfoPanel
-        ref={ref}
         isOpen={isOpen}
         isPinned={isPinned}
         setIsPinned={setIsPinned}
