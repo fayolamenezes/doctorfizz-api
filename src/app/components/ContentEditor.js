@@ -187,7 +187,10 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   );
 
   const WORD_TARGET_FROM_DATA =
-    data?.metrics?.wordTarget ?? data?.wordTarget ?? pageConfig?.wordTarget ?? 1480;
+    data?.metrics?.wordTarget ??
+    data?.wordTarget ??
+    pageConfig?.wordTarget ??
+    1480;
 
   // Initial plagiarism pulled from data (multi-content) when available
   const [metrics, setMetrics] = useState(() => ({
@@ -376,6 +379,9 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   // Track previous incoming data.title to avoid clobbering user edits
   const prevDataTitleRef = useRef(data?.title);
 
+  // ✅ Track previous incoming query source so typing doesn't get overwritten
+  const prevDataQueryRef = useRef(data?.ui?.query || data?.primaryKeyword || "");
+
   // Mount: handle ?new/#new once, restore saved state (no more hash forcing)
   useEffect(() => {
     try {
@@ -395,6 +401,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
         setTitle("Untitled");
         setContent("");
         setQuery("");
+        prevDataQueryRef.current = ""; // ✅ keep in sync
         setActiveTab("content");
         setSeoMode("basic");
         setLastEdited("just now");
@@ -467,6 +474,7 @@ export default function ContentEditor({ data, onBackToDashboard }) {
       setTitle(nextTitle);
       setContent(nextContent);
       setQuery("");
+      prevDataQueryRef.current = ""; // ✅ keep in sync
       setActiveTab("content");
       setSeoMode("basic");
       setLastEdited("just now");
@@ -478,7 +486,10 @@ export default function ContentEditor({ data, onBackToDashboard }) {
         wordCount: 0,
         lsiKeywords: 0,
         wordTarget:
-          data?.metrics?.wordTarget ?? data?.wordTarget ?? pageConfig?.wordTarget ?? 1480,
+          data?.metrics?.wordTarget ??
+          data?.wordTarget ??
+          pageConfig?.wordTarget ??
+          1480,
       }));
       try {
         localStorage.setItem(
@@ -503,7 +514,12 @@ export default function ContentEditor({ data, onBackToDashboard }) {
         window.history.replaceState(null, "", url.toString());
       } catch {}
     },
-    [data?.metrics?.wordTarget, data?.wordTarget, pageConfig?.wordTarget, STORAGE_KEY]
+    [
+      data?.metrics?.wordTarget,
+      data?.wordTarget,
+      pageConfig?.wordTarget,
+      STORAGE_KEY,
+    ]
   );
 
   /* listen for multiple "new doc" event names */
@@ -533,8 +549,9 @@ export default function ContentEditor({ data, onBackToDashboard }) {
   /* sync when parent `data` changes, but don't clobber a fresh new doc or user edits */
   useEffect(() => {
     if (!restoredRef.current || newDocRef.current) {
-      // Still keep the ref in sync even if we early-return
+      // Still keep the refs in sync even if we early-return
       prevDataTitleRef.current = data?.title;
+      prevDataQueryRef.current = data?.ui?.query || data?.primaryKeyword || "";
       return;
     }
 
@@ -555,9 +572,12 @@ export default function ContentEditor({ data, onBackToDashboard }) {
       if (content !== "") setContent("");
     }
 
-    // Query (keep syncing from data)
-    const nextQuery = data?.ui?.query || data?.primaryKeyword || "";
-    if (nextQuery !== query) setQuery(nextQuery);
+    // ✅ Query: only update when the INCOMING query source changed (prevents wiping while typing)
+    const incomingQuery = data?.ui?.query || data?.primaryKeyword || "";
+    if (incomingQuery !== prevDataQueryRef.current) {
+      setQuery(incomingQuery);
+      prevDataQueryRef.current = incomingQuery;
+    }
 
     // Metrics.wordTarget (avoid re-setting same value)
     const nextWordTarget =
@@ -582,7 +602,13 @@ export default function ContentEditor({ data, onBackToDashboard }) {
     if (nextPlagiarism !== metrics.plagiarism) {
       setMetrics((m) => ({ ...m, plagiarism: nextPlagiarism }));
     }
-  }, [data, pageConfig, query, metrics.wordTarget, metrics.plagiarism, content]);
+  }, [
+    data,
+    pageConfig,
+    metrics.wordTarget,
+    metrics.plagiarism,
+    content,
+  ]);
 
   /* ===========================
      Resolve navbar SV / KD

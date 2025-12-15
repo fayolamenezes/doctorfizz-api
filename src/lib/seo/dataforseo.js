@@ -422,11 +422,17 @@ export async function fetchDataForSeo(targetInput, options = {}) {
         dataForSeo: {
           keyword: target,
           backlinksSummary: null,
+
+          // ✅ links tab expects these keys to exist (even if empty)
+          backlinkDomains: [],
+          externalTotal: 0,
+          totalDomains: 0,
+
           serpFeatures: null,
           serpItems: [],
           topKeywords,
           aiTools: null,
-          raw: { backlinks: null, serp: null },
+          raw: { backlinks: null, serp: null, referring_domains: null },
         },
         seoRows,
         _mode: "keywordsOnly",
@@ -479,6 +485,79 @@ export async function fetchDataForSeo(targetInput, options = {}) {
       backlinksTask.result[0]
         ? backlinksTask.result[0]
         : null;
+
+    // ✅ 1.5) REFERRING DOMAINS (this powers your Links tab)
+    // This returns an actual list of domains with backlinks counts.
+    let backlinkDomains = [];
+    let externalTotal = 0;
+    let totalDomains = 0;
+    let referringDomainsRaw = null;
+
+    try {
+      const referringPayload = [
+        {
+          target,
+          limit: 200, // 100–1000 (max 1000)
+          offset: 0,
+          order_by: ["rank,desc"],
+          exclude_internal_backlinks: true,
+          include_subdomains: true,
+          // optional filters:
+          // backlinks_filters: ["dofollow","=",true],
+        },
+      ];
+
+      const refRes = await fetch(
+        "https://api.dataforseo.com/v3/backlinks/referring_domains/live",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(referringPayload),
+        }
+      );
+
+      if (refRes.ok) {
+        const refJson = await refRes.json();
+        referringDomainsRaw = refJson;
+
+        const task0 = Array.isArray(refJson?.tasks) ? refJson.tasks[0] : null;
+        const r0 = Array.isArray(task0?.result) ? task0.result[0] : null;
+        const items = Array.isArray(r0?.items) ? r0.items : [];
+
+        backlinkDomains = items
+          .map((it) => {
+            const domain = it?.domain || it?.referring_domain || "";
+            if (!domain) return null;
+
+            const backlinks = toNumber(it?.backlinks) ?? 0;
+            const rank = toNumber(it?.rank) ?? 0;
+
+            return {
+              domain,
+              backlinks,
+              rank,
+              referring_pages: toNumber(it?.referring_pages) ?? 0,
+              backlinks_spam_score: toNumber(it?.backlinks_spam_score),
+              first_seen: it?.first_seen ?? null,
+              lost_date: it?.lost_date ?? null,
+            };
+          })
+          .filter(Boolean);
+
+        totalDomains =
+          typeof r0?.total_count === "number" ? r0.total_count : items.length;
+
+        externalTotal = backlinkDomains.reduce(
+          (sum, d) => sum + (Number(d.backlinks) || 0),
+          0
+        );
+      }
+    } catch {
+      // don’t fail full pipeline if referring domains call fails
+    }
 
     // 2) DOMAIN KEYWORDS
     const keywordsPayload = [
@@ -554,23 +633,38 @@ export async function fetchDataForSeo(targetInput, options = {}) {
           .filter(Boolean)
           .slice(0, maxKeywords);
 
-        const keywordStrings = topKeywords.map((k) => k.keyword);
-        const subtopicsByKeyword = await fetchSubtopicsForKeywords(keywordStrings, auth);
+        if (includeSubtopics) {
+          const keywordStrings = topKeywords.map((k) => k.keyword);
+          const subtopicsByKeyword = await fetchSubtopicsForKeywords(
+            keywordStrings,
+            auth
+          );
 
-        topKeywords = topKeywords.map((row) => {
-          const subs = subtopicsByKeyword[row.keyword];
-          const suggestedFromApi =
-            Array.isArray(subs) && subs.length > 0 ? subs[0] : null;
-          const fallbackSuggested = buildSuggestedTopic(row.keyword, row.type);
-          const suggested = suggestedFromApi || fallbackSuggested;
+          topKeywords = topKeywords.map((row) => {
+            const subs = subtopicsByKeyword[row.keyword];
+            const suggestedFromApi =
+              Array.isArray(subs) && subs.length > 0 ? subs[0] : null;
+            const fallbackSuggested = buildSuggestedTopic(row.keyword, row.type);
+            const suggested = suggestedFromApi || fallbackSuggested;
 
-          return {
-            ...row,
-            suggested,
-            suggestedTopic: suggested,
-            topic: suggested,
-          };
-        });
+            return {
+              ...row,
+              suggested,
+              suggestedTopic: suggested,
+              topic: suggested,
+            };
+          });
+        } else {
+          topKeywords = topKeywords.map((row) => {
+            const suggested = buildSuggestedTopic(row.keyword, row.type);
+            return {
+              ...row,
+              suggested,
+              suggestedTopic: suggested,
+              topic: suggested,
+            };
+          });
+        }
 
         seoRows = topKeywords;
       }
@@ -689,11 +783,21 @@ export async function fetchDataForSeo(targetInput, options = {}) {
       dataForSeo: {
         keyword: target,
         backlinksSummary,
+
+        // ✅ NEW: powers SeoAdvancedLinks
+        backlinkDomains,
+        externalTotal,
+        totalDomains,
+
         serpFeatures,
         serpItems,
         topKeywords,
         aiTools,
-        raw: { backlinks: backlinksData, serp: serpRaw },
+        raw: {
+          backlinks: backlinksData,
+          referring_domains: referringDomainsRaw,
+          serp: serpRaw,
+        },
       },
       seoRows,
     };
@@ -788,10 +892,13 @@ export async function crawlSiteUrlsWithDataForSEO(
 
   for (let i = 0; i < 6; i++) {
     try {
-      const sumRes = await fetch(`https://api.dataforseo.com/v3/on_page/summary/${id}`, {
-        method: "GET",
-        headers: { Authorization: `Basic ${auth}` },
-      });
+      const sumRes = await fetch(
+        `https://api.dataforseo.com/v3/on_page/summary/${id}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Basic ${auth}` },
+        }
+      );
 
       if (sumRes.ok) {
         const sumJson = await sumRes.json();

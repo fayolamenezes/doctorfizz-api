@@ -36,6 +36,13 @@ function getDomainFromUrl(url) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 // Convert extracted plain text into simple HTML paragraphs (fallback only)
 function textToHtml(text) {
   const safe = String(text || "").trim();
@@ -46,7 +53,7 @@ function textToHtml(text) {
     .map((p) => {
       const trimmed = p.trim();
       if (!trimmed) return "";
-      const withBreaks = trimmed.replace(/\n/g, "<br/>");
+      const withBreaks = escapeHtml(trimmed).replace(/\n/g, "<br/>");
       return `<p>${withBreaks}</p>`;
     })
     .filter(Boolean)
@@ -64,12 +71,13 @@ function extractBodyInnerHtml(fullHtml) {
 }
 
 /**
- * Make the rendered page HTML "editor-safe":
+ * Make the rendered page HTML "editor-safe" AND "image-free":
  * - remove scripts/styles/noscript/svg/iframe etc
- * - keep headings, paragraphs, lists, links, images, tables (basic)
+ * - REMOVE images/picture/video/audio/figure entirely
+ * - keep headings, paragraphs, lists, links, tables (basic)
  * - strip most attributes except a small allowlist
  *
- * NOTE: This is regex-based (no DOM dependency). It’s “best effort”.
+ * NOTE: Regex-based (no DOM dependency). Best-effort.
  */
 function sanitizeHtmlForEditor(inputHtml) {
   let html = String(inputHtml || "");
@@ -95,7 +103,16 @@ function sanitizeHtmlForEditor(inputHtml) {
     .replace(/<footer[\s\S]*?<\/footer>/gi, "")
     .replace(/<aside[\s\S]*?<\/aside>/gi, "");
 
-  // Strip attributes we don’t want, but keep a small allowlist for some tags.
+  // ✅ REMOVE IMAGES & MEDIA COMPLETELY
+  html = html
+    .replace(/<figure[\s\S]*?<\/figure>/gi, "")
+    .replace(/<picture[\s\S]*?<\/picture>/gi, "")
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<source\b[^>]*>/gi, "")
+    .replace(/<video[\s\S]*?<\/video>/gi, "")
+    .replace(/<audio[\s\S]*?<\/audio>/gi, "");
+
+  // Strip attributes we don’t want
   // 1) For all tags: remove on* handlers + style
   html = html
     .replace(/\son\w+\s*=\s*["'][\s\S]*?["']/gi, "")
@@ -112,16 +129,7 @@ function sanitizeHtmlForEditor(inputHtml) {
     return `<a${href}${title}${target}${rel}>`;
   });
 
-  // 3) For <img>: keep src, alt, title
-  html = html.replace(/<img\b([^>]*)>/gi, (m, attrs) => {
-    const src = (attrs.match(/\ssrc\s*=\s*["'][^"']*["']/i) || [])[0] || "";
-    const alt = (attrs.match(/\salt\s*=\s*["'][^"']*["']/i) || [])[0] || "";
-    const title =
-      (attrs.match(/\stitle\s*=\s*["'][^"']*["']/i) || [])[0] || "";
-    return `<img${src}${alt}${title} />`;
-  });
-
-  // 4) For all other tags: remove most attrs
+  // 3) For all other tags: remove most attrs
   html = html.replace(/<([a-z0-9]+)\b([^>]*)>/gi, (m, tag, attrs) => {
     const t = String(tag).toLowerCase();
 
@@ -154,15 +162,12 @@ function sanitizeHtmlForEditor(inputHtml) {
       "th",
       "td",
       "a",
-      "img",
-      "figure",
-      "figcaption",
       "span",
       "div",
     ]);
 
     if (!allowed.has(t)) return `<div>`;
-    if (t === "a" || t === "img") return m;
+    if (t === "a") return m;
 
     if (t === "table") {
       const border =
@@ -177,34 +182,42 @@ function sanitizeHtmlForEditor(inputHtml) {
     return `<${t}>`;
   });
 
+  // Clean up empty blocks created by stripping media
+  html = html
+    .replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>/gi, "")
+    .replace(/<div>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/div>/gi, "");
+
   html = html.replace(/\n{3,}/g, "\n\n").trim();
   return html;
 }
 
 /**
- * Prefer rendered HTML for editor hydration (keeps formatting).
- * Use ApyHub text only for rawText + fallback HTML.
+ * Prefer rendered HTML for editor hydration (keeps headings/paragraphs).
+ * Always skip images.
+ * Use ApyHub text for rawText and fallback HTML if rendered HTML is empty.
  */
 async function buildContentPayload(url) {
   let title = null;
-  let htmlForEditor = "";
   let rawText = "";
+  let htmlForEditor = "";
 
-  // 1) Rendered HTML (best for formatting)
+  // 1) Rendered HTML -> sanitize (keeps headings/paragraphs/lists, removes images)
   try {
     const fetched = await fetchHtml(url);
     const fullHtml = fetched?.html || "";
     title = extractTitle(fullHtml) || null;
 
     const bodyInner = extractBodyInnerHtml(fullHtml);
-    const sanitized = sanitizeHtmlForEditor(bodyInner);
+    const safeHtml = sanitizeHtmlForEditor(bodyInner);
 
-    htmlForEditor = sanitized || "";
+    if (safeHtml && safeHtml.trim()) {
+      htmlForEditor = safeHtml.trim();
+    }
   } catch {
-    // ignore; fallback later
+    // ignore
   }
 
-  // 2) ApyHub text (good for metrics / fallback HTML)
+  // 2) ApyHub text for rawText (and fallback html if needed)
   try {
     const apyResult = await extractPageText(url);
     rawText = (apyResult?.apyhub?.text || "").trim();
@@ -212,11 +225,12 @@ async function buildContentPayload(url) {
     // ignore
   }
 
-  // 3) If we didn’t get usable HTML, fallback to text->html
-  if (!htmlForEditor) {
-    htmlForEditor = rawText ? textToHtml(rawText) : "";
+  // 3) Fallback HTML from text only (no images)
+  if (!htmlForEditor && rawText) {
+    htmlForEditor = textToHtml(rawText);
   }
 
+  // 4) Fallback title from first non-empty line of text
   if (!title && rawText) {
     const firstLine = rawText.split("\n").map((s) => s.trim()).find(Boolean);
     title = firstLine ? firstLine.slice(0, 120) : null;
@@ -387,10 +401,6 @@ function ensureSeoRows(unified) {
 function mergeProviderResult(unified, providerKey, providerResult) {
   if (!providerResult) return;
 
-  // Most of your providers already return top-level objects (technicalSeo etc.)
-  // DataForSEO returns { dataForSeo, seoRows }
-  // Authority returns OpenPageRank shape
-  // Serper returns serp shape
   Object.assign(unified, providerResult);
 
   if (providerKey === "authority" && unified.openPageRank == null) {
@@ -401,6 +411,44 @@ function mergeProviderResult(unified, providerKey, providerResult) {
   }
 
   ensureSeoRows(unified);
+}
+
+/**
+ * ✅ NEW: Normalize response shape so UI tabs don't break:
+ * - Provide `serper` alias from `serp` (your FAQ component expects `seoData.serper`)
+ * - Ensure Links-tab fields exist on `dataForSeo` even if API returns nothing
+ */
+function normalizeForUi(unified) {
+  // Alias: { serp: { topResults, peopleAlsoAsk, ... } } -> { serper: { organic, peopleAlsoAsk, ... } }
+  if (unified?.serp && !unified?.serper) {
+    unified.serper = {
+      organic: Array.isArray(unified.serp?.topResults) ? unified.serp.topResults : [],
+      peopleAlsoAsk: Array.isArray(unified.serp?.peopleAlsoAsk)
+        ? unified.serp.peopleAlsoAsk
+        : [],
+      relatedSearches: Array.isArray(unified.serp?.relatedSearches)
+        ? unified.serp.relatedSearches
+        : [],
+      serpFeatures: unified.serp?.serpFeatures ?? null,
+      raw: unified.serp?.raw ?? null,
+    };
+  }
+
+  // Links tab expects these to exist under dataForSeo
+  if (unified?.dataForSeo) {
+    if (!Array.isArray(unified.dataForSeo.backlinkDomains)) {
+      unified.dataForSeo.backlinkDomains = [];
+    }
+    if (typeof unified.dataForSeo.externalTotal !== "number") {
+      unified.dataForSeo.externalTotal = 0;
+    }
+    if (typeof unified.dataForSeo.totalDomains !== "number") {
+      unified.dataForSeo.totalDomains = 0;
+    }
+  }
+
+  ensureSeoRows(unified);
+  return unified;
 }
 
 export async function POST(request) {
@@ -449,7 +497,7 @@ export async function POST(request) {
     if (!wantsSSE) {
       const tasks = [];
 
-      if (providers.includes("psi")) {
+      if (providers.includes("psi") && !keywordsOnly) {
         tasks.push(
           (async () => {
             try {
@@ -507,7 +555,7 @@ export async function POST(request) {
         );
       }
 
-      if (providers.includes("serper") && keyword) {
+      if (providers.includes("serper") && keyword && !keywordsOnly) {
         tasks.push(
           fetchSerp(keyword).then(
             (result) => ({ key: "serper", ok: true, result }),
@@ -539,8 +587,6 @@ export async function POST(request) {
 
       const unified = coreResults.reduce((acc, item) => {
         if (item.ok && item.result) {
-          // ✅ IMPORTANT: dataforseo provider returns { dataForSeo, seoRows }
-          // so we merge carefully
           mergeProviderResult(acc, item.key, item.result);
           return acc;
         }
@@ -556,8 +602,6 @@ export async function POST(request) {
       // 2. CONTENT PIPELINE
       // -----------------------------------------
       if (providers.includes("content") && !keywordsOnly) {
-        // ✅ If keywordsOnly is true, you likely don't need content for InfoPanel,
-        // and skipping it makes response faster.
         try {
           const content = await buildContentPayload(url);
 
@@ -578,6 +622,9 @@ export async function POST(request) {
             err?.message || "Content pipeline failed";
         }
       }
+
+      // ✅ normalize shapes for UI consumers (Links + FAQs)
+      normalizeForUi(unified);
 
       // -----------------------------------------
       // 3. NORMALIZED ISSUE COUNTS FOR DASHBOARD
@@ -785,7 +832,8 @@ export async function POST(request) {
             send("status", {
               stage: "content",
               state: "start",
-              message: "Extracting page content (title + rendered HTML)…",
+              message:
+                "Extracting page content (title + rendered HTML, image-free)…",
             });
 
             try {
@@ -806,7 +854,9 @@ export async function POST(request) {
                 });
               } else {
                 unified._warnings = unified._warnings || [];
-                unified._warnings.push("No title/html/text extracted (content empty)");
+                unified._warnings.push(
+                  "No title/html/text extracted (content empty)"
+                );
                 send("status", {
                   stage: "content",
                   state: "done",
@@ -824,6 +874,9 @@ export async function POST(request) {
               });
             }
           }
+
+          // ✅ normalize shapes for UI consumers (Links + FAQs)
+          normalizeForUi(unified);
 
           send("status", {
             stage: "finalize",

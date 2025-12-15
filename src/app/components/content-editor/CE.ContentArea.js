@@ -80,6 +80,60 @@ function toHeadingHtml(input) {
   return `<${level}><span style="font-size:${s}px;font-weight:700">${title}</span></${level}>`;
 }
 
+/** Convert plain text into paragraph HTML (no images possible here) */
+function textToHtml(text) {
+  const safe = String(text || "").trim();
+  if (!safe) return "";
+  return safe
+    .split(/\n\s*\n/g)
+    .map((p) => {
+      const trimmed = p.trim();
+      if (!trimmed) return "";
+      const withBreaks = trimmed.replace(/\n/g, "<br/>");
+      return `<p>${escapeHtml(withBreaks)}</p>`;
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+/**
+ * ✅ Strip images but keep formatting:
+ * - remove img/figure/picture/source/video/svg and their wrappers
+ * - keep headings/paragraphs/lists/links/etc intact
+ */
+function stripImagesKeepFormatting(inputHtml) {
+  let html = String(inputHtml || "");
+  if (!html) return "";
+
+  // Remove <figure> blocks completely (usually image + caption)
+  html = html.replace(/<figure[\s\S]*?<\/figure>/gi, "");
+
+  // Remove <picture> blocks completely (contains <source> + <img>)
+  html = html.replace(/<picture[\s\S]*?<\/picture>/gi, "");
+
+  // Remove standalone <img ...>
+  html = html.replace(/<img\b[^>]*>/gi, "");
+
+  // Remove <source ...> tags (often used inside picture/video)
+  html = html.replace(/<source\b[^>]*>/gi, "");
+
+  // Remove video/audio embeds (just in case)
+  html = html.replace(/<video[\s\S]*?<\/video>/gi, "");
+  html = html.replace(/<audio[\s\S]*?<\/audio>/gi, "");
+
+  // Remove svg blocks (sometimes used as icons/graphics)
+  html = html.replace(/<svg[\s\S]*?<\/svg>/gi, "");
+
+  // Clean up empty paragraphs/divs created by removals
+  html = html
+    .replace(/<p>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/p>/gi, "")
+    .replace(/<div>\s*(?:&nbsp;|\s|<br\s*\/?>)*\s*<\/div>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return html;
+}
+
 export default function CEContentArea({
   title = "Untitled",
   activeTab,
@@ -97,17 +151,9 @@ export default function CEContentArea({
   setContent,
   primaryKeyword,
   lsiKeywords,
-  /**
-   * Optional: pass the page object (from contenteditor.json) and explicit optPageId
-   * to the Research panel. When provided, the Research panel will use these
-   * values instead of inferring them from the editor content or query. This
-   * prevents fallback to the first page in the optimize dataset.
-   */
   page,
   optPageId,
-  /** OPTIONAL: explicit docId from parent (e.g. slug/id) */
   docId: docIdProp,
-  // Unified SEO data from /api/seo (passed from ContentEditor)
   seoData,
   seoLoading,
   seoError,
@@ -130,7 +176,6 @@ export default function CEContentArea({
     );
   };
 
-  // Compact version for mobile only (smaller font so it fits one line)
   const MobileTab = ({ id, children }) => {
     const is = activeTab === id;
     return (
@@ -163,7 +208,10 @@ export default function CEContentArea({
    *  --------------------------------------------- */
   const [localContent, setLocalContent] = useState(() => content || "");
   const lastLocalEditAtRef = useRef(0);
-  const LOCAL_GRACE_MS = 300; // small window where external prop won't clobber local typing
+  const LOCAL_GRACE_MS = 300;
+
+  // ✅ Seed guard (prevents update depth loops)
+  const seededFromSeoRef = useRef(false);
 
   // One-time initialize from prop on mount (in case it’s async-loaded)
   const didInitRef = useRef(false);
@@ -177,8 +225,7 @@ export default function CEContentArea({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // If the parent later changes `content` (e.g. load new doc),
-  // adopt it unless we just typed locally.
+  // If parent later changes `content`, adopt unless we just typed.
   useEffect(() => {
     if (typeof content !== "string") return;
     const justEdited = Date.now() - lastLocalEditAtRef.current < LOCAL_GRACE_MS;
@@ -187,7 +234,46 @@ export default function CEContentArea({
     }
   }, [content, localContent]);
 
-  // When the editor changes, update our local state + forward upstream
+  /**
+   * ✅ IMPORTANT FIXES:
+   * - When seoData arrives, we seed editor content ONCE.
+   * - We strip images before seeding (keep headings/paragraphs/lists).
+   * - This also ensures metrics compute immediately (no click required).
+   */
+  useEffect(() => {
+    if (seededFromSeoRef.current) return;
+
+    const hasLocal =
+      typeof localContent === "string" && localContent.trim().length > 0;
+    if (hasLocal) return;
+
+    const seoHtmlRaw =
+      typeof seoData?.content?.html === "string" ? seoData.content.html : "";
+    const seoTextRaw =
+      typeof seoData?.content?.rawText === "string"
+        ? seoData.content.rawText
+        : "";
+
+    // Prefer HTML to preserve headings/paragraph formatting, but strip images.
+    const seoHtml = seoHtmlRaw ? stripImagesKeepFormatting(seoHtmlRaw) : "";
+    const seed = (seoHtml && seoHtml.trim()) || (seoTextRaw && seoTextRaw.trim())
+      ? (seoHtml && seoHtml.trim()) || textToHtml(seoTextRaw)
+      : "";
+
+    if (!seed) return;
+
+    seededFromSeoRef.current = true;
+
+    // 1) update local immediately (drives metrics)
+    setLocalContent(seed);
+
+    // 2) push upstream only if it differs (prevents loops)
+    const parentSame =
+      typeof content === "string" && content.trim() === seed.trim();
+    if (!parentSame) setContent?.(seed);
+  }, [seoData, localContent, content, setContent]);
+
+  // When the editor changes, update local + forward upstream
   const handleSetContent = useCallback(
     (html) => {
       if (html === localContent) return;
@@ -249,9 +335,32 @@ export default function CEContentArea({
 
   useEffect(() => () => clearTimeout(metricsTimerRef.current), []);
 
+  /**
+   * ✅ Metrics should compute even if localContent hasn't been pushed yet.
+   * Use localContent first, else fall back to seoData (stripped of images).
+   */
+  const contentForMetrics = useMemo(() => {
+    const local = typeof localContent === "string" ? localContent : "";
+    if (local.trim()) return local;
+
+    const seoHtmlRaw =
+      typeof seoData?.content?.html === "string" ? seoData.content.html : "";
+    const seoTextRaw =
+      typeof seoData?.content?.rawText === "string"
+        ? seoData.content.rawText
+        : "";
+
+    const seoHtml = seoHtmlRaw ? stripImagesKeepFormatting(seoHtmlRaw) : "";
+    if (seoHtml.trim()) return seoHtml;
+
+    if (seoTextRaw.trim()) return textToHtml(seoTextRaw);
+
+    return "";
+  }, [localContent, seoData]);
+
   // ----- Recompute metrics (debounced) -----
   useEffect(() => {
-    const html = localContent;
+    const html = contentForMetrics;
     if (html == null) return;
 
     const timer = setTimeout(() => {
@@ -281,12 +390,10 @@ export default function CEContentArea({
       const words = plain.split(/\s+/).filter(Boolean);
       const wordCount = words.length;
 
-      // --- Keyword detection ---
       const pkRegex = buildPhraseRegex(PRIMARY_KEYWORD);
       const pkMatches = pkRegex ? (plain.match(pkRegex) || []).length : 0;
       const pkScore = Math.min(100, pkMatches * 25);
 
-      // --- LSI coverage ---
       let lsiCovered = 0;
       for (const term of LSI_KEYWORDS) {
         const rx = buildPhraseRegex(term);
@@ -300,7 +407,6 @@ export default function CEContentArea({
             )
           : 0;
 
-      // --- Simple plagiarism heuristic ---
       const freq = Object.create(null);
       for (const w of words) freq[w] = (freq[w] || 0) + 1;
       const repeats = Object.values(freq).filter((n) => n > 2).length;
@@ -342,7 +448,7 @@ export default function CEContentArea({
 
     return () => clearTimeout(timer);
   }, [
-    localContent,
+    contentForMetrics,
     PRIMARY_KEYWORD,
     LSI_KEYWORDS,
     metricsInternal.wordTarget,
@@ -352,35 +458,37 @@ export default function CEContentArea({
   const metrics = metricsProp ?? metricsInternal;
   const effectiveSeoMode = seoModeProp ?? seoMode;
 
-  /** =========================
-   * Paste-to-editor hook
-   * ========================= */
+  /** Paste-to-editor hook */
   const handlePasteHeadingToEditor = useCallback(
     (heading, destination = "editor") => {
-      if (destination !== "editor") return; // Tab2 is managed by the right panel itself
+      if (destination !== "editor") return;
 
-      // Support bulk arrays or single item
       const items = Array.isArray(heading) ? heading : [heading];
-
       const blocks = items.map((item) => toHeadingHtml(item)).join("");
-
-      // Add a soft separator before appended content for readability
       const separator = localContent ? "<p><br/></p>" : "";
-
       const nextHtml = (localContent || "") + separator + blocks;
       handleSetContent(nextHtml);
     },
     [localContent, handleSetContent]
   );
 
-  /** =========================
-   * Mobile toolbar visibility
-   * ========================= */
+  /**
+   * Research panel content:
+   * Prefer live editor, else stripped seoData HTML, else rawText.
+   */
+  const effectiveEditorContent =
+    (localContent && localContent.trim()) ||
+    (typeof seoData?.content?.html === "string" &&
+      stripImagesKeepFormatting(seoData.content.html).trim()) ||
+    (typeof seoData?.content?.rawText === "string" &&
+      seoData.content.rawText.trim()) ||
+    "";
+
+  /** Mobile toolbar visibility */
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [hasTypedSinceFocus, setHasTypedSinceFocus] = useState(false);
   const baselineViewportHeightRef = useRef(null);
 
-  // Detect keyboard visibility using viewport height changes
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -393,7 +501,6 @@ export default function CEContentArea({
         baselineViewportHeightRef.current == null ||
         currentHeight > baselineViewportHeightRef.current
       ) {
-        // keep track of the largest height we've seen (no keyboard)
         baselineViewportHeightRef.current = currentHeight;
       }
 
@@ -414,7 +521,6 @@ export default function CEContentArea({
       return () => vv.removeEventListener("resize", onResize);
     }
 
-    // Fallback: use window.innerHeight
     updateFromHeight(window.innerHeight);
     const onResize = () => updateFromHeight(window.innerHeight);
     window.addEventListener("resize", onResize);
@@ -424,20 +530,16 @@ export default function CEContentArea({
   const handleTypingPulse = useCallback(() => {
     setHasTypedSinceFocus(true);
   }, []);
-
   const handleFocus = useCallback(() => {
     setHasTypedSinceFocus(false);
   }, []);
-
   const handleBlur = useCallback(() => {
     setHasTypedSinceFocus(false);
   }, []);
 
   const showMobileToolbar = keyboardVisible && hasTypedSinceFocus;
 
-  /** =========================
-   * Mobile metrics collapse toggle
-   * ========================= */
+  /** Mobile metrics collapse toggle */
   const [mobileMetricsCollapsed, setMobileMetricsCollapsed] = useState(false);
 
   const handleToggleMobileMetrics = useCallback(() => {
@@ -473,7 +575,7 @@ export default function CEContentArea({
     >
       {/* LEFT AREA */}
       <div className="min-w-0 bg-white lg:border-r border-[var(--border)]">
-        {/* Mobile tabs row (smaller, one-line, no 'Edited' text) */}
+        {/* Mobile tabs row */}
         <div className="flex lg:hidden items-center gap-1 px-2 pt-[3px] border-b border-[var(--border)]">
           <button
             onMouseDown={(e) => e.preventDefault()}
@@ -487,7 +589,7 @@ export default function CEContentArea({
           <MobileTab id="final">Final Content</MobileTab>
         </div>
 
-        {/* Tabs + 'Edited' row (desktop only – unchanged) */}
+        {/* Desktop tabs row */}
         <div className="hidden lg:flex items-center justify-between px-2 pt-[3px]">
           <div className="flex items-center gap-1">
             <button
@@ -507,12 +609,12 @@ export default function CEContentArea({
           </div>
         </div>
 
-        {/* Desktop formatting toolbar only (second row) */}
+        {/* Desktop formatting toolbar only */}
         <div className="hidden lg:block">
           <CEToolbar editorRef={editorRef} />
         </div>
 
-        {/* Mobile/tablet only double-chevron icon (between tabs and content) */}
+        {/* Mobile collapse chevrons */}
         <div className="flex lg:hidden items-center justify-start px-2 py-1 bg-white">
           <button
             type="button"
@@ -535,7 +637,6 @@ export default function CEContentArea({
             title={title}
             content={localContent}
             setContent={handleSetContent}
-            /* mobile typing signals */
             onTyping={handleTypingPulse}
             onFocusEditor={handleFocus}
             onBlurEditor={handleBlur}
@@ -543,7 +644,7 @@ export default function CEContentArea({
         </div>
       </div>
 
-      {/* RIGHT PANEL — desktop only (mobile uses slide-over) */}
+      {/* RIGHT PANEL — desktop only */}
       <div className="hidden lg:block min-w-[320px] border-l border-[var(--border)] bg-white">
         <CEResearchPanel
           query={query}
@@ -551,24 +652,18 @@ export default function CEContentArea({
           onStart={onStart}
           seoMode={effectiveSeoMode}
           metrics={metrics}
-          editorContent={localContent}
-          /* Allow panel to paste headings into canvas */
+          editorContent={effectiveEditorContent}
           onPasteToEditor={handlePasteHeadingToEditor}
-          /* Pass through page + explicit optPageId so the Research panel
-             can select the correct optimize-dataset page instead of
-             guessing from editor HTML and falling back to the first page. */
           page={page}
           optPageId={optPageId}
-          // New: pass docId down so Canvas/autosave can be per-document (if panel ever needs it)
           docId={docId}
-          // Unified SEO data from /api/seo (desktop research panel)
           seoData={seoData}
           seoLoading={seoLoading}
           seoError={seoError}
         />
       </div>
 
-      {/* MOBILE: docked, horizontally scrollable toolbar */}
+      {/* MOBILE: docked toolbar */}
       <div
         className={`
           lg:hidden fixed left-0 right-0 z-50
@@ -581,7 +676,6 @@ export default function CEContentArea({
         `}
       >
         <CEToolbar mode="mobile" editorRef={editorRef} />
-        {/* spacer to ensure canvas content isn’t covered when toolbar is visible */}
         <div className={showMobileToolbar ? "h-14" : "h-0"} />
       </div>
     </div>

@@ -281,12 +281,19 @@ const CECanvas = forwardRef(function CECanvas(
     // 1) No initial content => try per-doc autosave
     if (!seededRef.current && isTrulyEmpty()) {
       const saved =
-        typeof window !== "undefined" ? localStorage.getItem(AUTOSAVE_KEY) : null;
+        typeof window !== "undefined"
+          ? localStorage.getItem(AUTOSAVE_KEY)
+          : null;
+
       if (saved && !isTrulyEmptyHtml(saved)) {
         suppressInputRef.current = true;
         el.innerHTML = saved;
-        setContent?.(saved);
+
+        // ✅ IMPORTANT:
+        // Do NOT call setContent() during mount hydration.
+        // Parent seeding/hydration is handled in CE.ContentArea / ContentEditor.
         lastLocalHtmlRef.current = saved;
+
         queueMicrotask(() => {
           suppressInputRef.current = false;
         });
@@ -298,7 +305,11 @@ const CECanvas = forwardRef(function CECanvas(
       if (el.innerHTML !== html) {
         suppressInputRef.current = true;
         el.innerHTML = html;
+
+        // ✅ IMPORTANT:
+        // Do NOT call setContent() during mount hydration.
         lastLocalHtmlRef.current = html;
+
         queueMicrotask(() => {
           suppressInputRef.current = false;
         });
@@ -317,7 +328,6 @@ const CECanvas = forwardRef(function CECanvas(
     AUTOSAVE_KEY,
     isTrulyEmpty,
     isTrulyEmptyHtml,
-    setContent,
     content,
     scheduleHighlights,
   ]);
@@ -350,7 +360,6 @@ const CECanvas = forwardRef(function CECanvas(
     const domIsEmpty = isTrulyEmptyHtml(currentDom);
 
     if (!propIsEmpty) {
-      // If DOM is "longer" only because of starter list/noise, we still want the prop.
       // The safest check is: only block overwrite if DOM is non-empty AND looks richer.
       if (!domIsEmpty && currentDom.length > htmlFromProp.length * 1.35) {
         // looks like user already edited more than the incoming prop; don't clobber
@@ -515,7 +524,8 @@ const CECanvas = forwardRef(function CECanvas(
   // - prop content is empty
   // - editor DOM is empty
   // This prevents the "Empty page" block from sticking around after SEO hydration.
-  const showStarter = isTrulyEmpty() && isTrulyEmptyHtml(editorRef.current?.innerHTML);
+  const showStarter =
+    isTrulyEmpty() && isTrulyEmptyHtml(editorRef.current?.innerHTML);
 
   return (
     <section
