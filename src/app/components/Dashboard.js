@@ -692,16 +692,46 @@ const fallbackSelected = useMemo(() => {
         ? backlinksSummary.backlinks_spam_score
         : null;
 
+    // ---- Quality distribution ----
+    // Priority:
+    // 1) DataForSEO spam score heuristic (if present)
+    // 2) seo-data.json (trustBar/medQuality/lowQuality) if present
+    // 3) deterministic realistic random (stable per domain)
     const qualityFromSpam = (() => {
-      if (spamScore == null) return { h: 0, m: 0, l: 0 };
+      // 1) DataForSEO
+      if (spamScore != null) {
+        // Simple heuristic:
+        // lower spam => more "High quality" share.
+        if (spamScore <= 5) return { h: 70, m: 20, l: 10 };
+        if (spamScore <= 15) return { h: 50, m: 30, l: 20 };
+        if (spamScore <= 30) return { h: 35, m: 35, l: 30 };
+        return { h: 25, m: 35, l: 40 };
+      }
 
-      // Simple heuristic:
-      // lower spam => more "High quality" share.
-      if (spamScore <= 5) return { h: 70, m: 20, l: 10 };
-      if (spamScore <= 15) return { h: 50, m: 30, l: 20 };
-      if (spamScore <= 30) return { h: 35, m: 35, l: 30 };
-      return { h: 25, m: 35, l: 40 };
-    })();
+      // 2) JSON row
+      const jh = fallbackSelected?.trustBar;
+      const jm = fallbackSelected?.medQuality;
+      const jl = fallbackSelected?.lowQuality;
+      const jsum = (jh ?? 0) + (jm ?? 0) + (jl ?? 0);
+      if (typeof jsum === "number" && jsum > 0) {
+        return {
+          h: Math.round((jh ?? 0) * 100 / jsum),
+          m: Math.round((jm ?? 0) * 100 / jsum),
+          l: Math.max(0, 100 - Math.round((jh ?? 0) * 100 / jsum) - Math.round((jm ?? 0) * 100 / jsum)),
+        };
+      }
+
+      // 3) Random (stable)
+      const seed = hashStringToSeed(`${seo._meta?.domain || domain}::quality`);
+      const rnd = mulberry32(seed);
+      const h = Math.round(35 + rnd() * 35); // 35–70
+      const m = Math.round(15 + rnd() * 35); // 15–50
+      const l = Math.max(0, 100 - h - m);
+      // If l got too small/large, rebalance lightly
+      const l2 = clamp(l, 5, 55);
+      const adjust = l2 - l;
+      return { h: h, m: Math.max(5, m - adjust), l: l2 };
+    })();;
 
     // Performance (GA4/GSC not wired yet) → fallback to seo-data.json (old behavior) → else realistic random
     // If you later add GA4/GSC, just populate these api fields and they'll win.
@@ -734,6 +764,52 @@ const fallbackSelected = useMemo(() => {
 
 
 
+
+    // ---- DoFollow / NoFollow ----
+    // Priority:
+    // 1) DataForSEO referring_pages counts (if present)
+    // 2) seo-data.json row (DoFollow_Links_Percent / NoFollow_Links_Percent) if present
+    // 3) deterministic realistic random (stable per domain)
+    const doNoFromApi = (() => {
+      const rp = backlinksSummary?.referring_pages;
+      const rpnf = backlinksSummary?.referring_pages_nofollow;
+      if (typeof rp === "number" && typeof rpnf === "number" && rp > 0) {
+        const doPct = Math.round(((rp - rpnf) / rp) * 100);
+        const noPct = Math.max(0, 100 - doPct);
+        return { doPct, noPct };
+      }
+      return null;
+    })();
+
+    const doNoFromJson = (() => {
+      const d = fallbackSelected?.dofollowPct;
+      const n = fallbackSelected?.nofollowPct;
+      if (typeof d === "number" && d > 0 && d <= 100 && typeof n === "number" && n >= 0 && n <= 100) {
+        const sum = d + n;
+        if (sum === 100) return { doPct: d, noPct: n };
+        // Normalize if the JSON isn't perfectly summing to 100
+        const doPct = Math.round((d * 100) / (sum || 100));
+        const noPct = Math.max(0, 100 - doPct);
+        return { doPct, noPct };
+      }
+      if (typeof d === "number" && d > 0 && d <= 100) {
+        return { doPct: d, noPct: Math.max(0, 100 - d) };
+      }
+      if (typeof n === "number" && n > 0 && n <= 100) {
+        return { doPct: Math.max(0, 100 - n), noPct: n };
+      }
+      return null;
+    })();
+
+    const doNoFromRandom = (() => {
+      const seed = hashStringToSeed(`${seo._meta?.domain || domain}::dofollow`);
+      const rnd = mulberry32(seed);
+      const doPct = Math.round(60 + rnd() * 35); // 60–95
+      const noPct = Math.max(0, 100 - doPct);
+      return { doPct, noPct };
+    })();
+
+    const doNoFinal = doNoFromApi || doNoFromJson || doNoFromRandom;
 const mapped = {
       domain: seo._meta?.domain || domain,
       dateAnalyzed: seo._meta?.generatedAt || "",
@@ -750,32 +826,8 @@ const mapped = {
       lowQuality: qualityFromSpam.l,
       referringDomains: linksFallback.referringDomains || undefined,
       backlinks: linksFallback.backlinks || undefined,
-      dofollowPct:
-        typeof backlinksSummary.referring_pages === "number" &&
-        typeof backlinksSummary.referring_pages_nofollow === "number" &&
-        backlinksSummary.referring_pages > 0
-          ? Math.round(
-              ((backlinksSummary.referring_pages -
-                backlinksSummary.referring_pages_nofollow) /
-                backlinksSummary.referring_pages) *
-                100
-            )
-          : 0,
-      nofollowPct:
-        typeof backlinksSummary.referring_pages === "number" &&
-        typeof backlinksSummary.referring_pages_nofollow === "number" &&
-        backlinksSummary.referring_pages > 0
-          ? Math.max(
-              0,
-              100 -
-                Math.round(
-                  ((backlinksSummary.referring_pages -
-                    backlinksSummary.referring_pages_nofollow) /
-                    backlinksSummary.referring_pages) *
-                    100
-                )
-            )
-          : 0,
+      dofollowPct: doNoFinal?.doPct ?? 0,
+      nofollowPct: doNoFinal?.noPct ?? 0,
 
       // Technical
       siteHealth:
