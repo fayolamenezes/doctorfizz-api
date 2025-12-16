@@ -557,7 +557,9 @@ function pickFinalKeywords({ rows, seedTokensAll, seedTokensSpecific, max = 8 })
 
 export async function POST(req) {
   try {
-    const { domain } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const domain = body?.domain || body?.url || body?.site;
+
     if (!domain) {
       return NextResponse.json(
         { error: "domain is required", keywords: [] },

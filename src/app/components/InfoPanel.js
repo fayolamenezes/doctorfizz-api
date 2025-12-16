@@ -466,7 +466,7 @@ export default function InfoPanel({
   }, [top3SelectedKeywords, top3ApiKeywords]);
 
   useEffect(() => {
-    if (!isOpen && !isPinned) return;
+    return;
     if (!rawWebsite) return;
 
     const safeUrl = rawWebsite.includes("://") ? rawWebsite : `https://${rawWebsite}`;
@@ -584,7 +584,7 @@ export default function InfoPanel({
     };
   };
 
-  const stats = apiInfoPanel
+  const stats = false
     ? {
         domainAuthority: Number.isFinite(apiInfoPanel.domainAuthority)
           ? Math.round(apiInfoPanel.domainAuthority)

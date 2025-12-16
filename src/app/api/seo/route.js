@@ -10,6 +10,8 @@ import { extractPageText } from "@/lib/seo/apyhub";
 // ✅ used to fetch rendered HTML + extract title
 import { fetchHtml, extractTitle } from "@/lib/seo/extraction";
 
+export const runtime = "nodejs";
+
 /**
  * Normalize any user input into a valid absolute URL string.
  * - "example.com"        -> "https://example.com"
@@ -201,7 +203,7 @@ async function buildContentPayload(url) {
   let rawText = "";
   let htmlForEditor = "";
 
-  // 1) Rendered HTML -> sanitize (keeps headings/paragraphs/lists, removes images)
+  // 1) Rendered HTML -> sanitize
   try {
     const fetched = await fetchHtml(url);
     const fullHtml = fetched?.html || "";
@@ -217,7 +219,7 @@ async function buildContentPayload(url) {
     // ignore
   }
 
-  // 2) ApyHub text for rawText (and fallback html if needed)
+  // 2) ApyHub text for rawText
   try {
     const apyResult = await extractPageText(url);
     rawText = (apyResult?.apyhub?.text || "").trim();
@@ -225,7 +227,7 @@ async function buildContentPayload(url) {
     // ignore
   }
 
-  // 3) Fallback HTML from text only (no images)
+  // 3) Fallback HTML from text only
   if (!htmlForEditor && rawText) {
     htmlForEditor = textToHtml(rawText);
   }
@@ -257,12 +259,157 @@ function sseFormat(event, data) {
   return `event: ${event}\ndata: ${payload}\n\n`;
 }
 
+/* ============================================================================
+   ✅ RapidAPI fallback helpers (Website Analyze & SEO Audit PRO)
+   - Only used if DataForSEO backlinks are missing/zero
+   - We keep this "best-effort" because RapidAPI response shape can vary by endpoint
+============================================================================ */
+
+function toNumber(val) {
+  if (typeof val === "number") return Number.isFinite(val) ? val : null;
+  if (typeof val === "string") {
+    const cleaned = val.replace(/,/g, "").trim();
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+// Breadth-first scan for numbers under keys that look like backlinks/ref domains
+function scanForCounts(obj) {
+  const seen = new Set();
+  const q = [obj];
+
+  let backlinks = null;
+  let referringDomains = null;
+  let referringPages = null;
+  let nofollowPages = null;
+
+  const KEY_BACKLINK = /back\s*links?|total_backlinks?/i;
+  const KEY_REF_DOM = /(referr?ing|referral)\s*domains?|ref_domains?/i;
+  const KEY_REF_PG = /(referr?ing|referral)\s*pages?/i;
+  const KEY_NOFOLLOW = /nofollow/i;
+
+  while (q.length) {
+    const cur = q.shift();
+    if (!cur || typeof cur !== "object") continue;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+
+    for (const [k, v] of Object.entries(cur)) {
+      if (v && typeof v === "object") q.push(v);
+
+      const n = toNumber(v);
+      if (n == null) continue;
+
+      if (backlinks == null && KEY_BACKLINK.test(k)) backlinks = n;
+      if (referringDomains == null && KEY_REF_DOM.test(k)) referringDomains = n;
+      if (referringPages == null && KEY_REF_PG.test(k)) referringPages = n;
+      if (nofollowPages == null && KEY_NOFOLLOW.test(k) && KEY_REF_PG.test(k))
+        nofollowPages = n;
+    }
+  }
+
+  return {
+    backlinks,
+    referringDomains,
+    referringPages,
+    nofollowPages,
+  };
+}
+
+async function fetchRapidApiBacklinkFallback(domain) {
+  const key = process.env.RAPIDAPI_KEY;
+  const host =
+    process.env.RAPIDAPI_HOST ||
+    "website-analyze-and-seo-audit-pro.p.rapidapi.com";
+
+  if (!key) {
+    throw new Error("RAPIDAPI_KEY is not set");
+  }
+
+  // Try a couple of likely endpoints (some plans expose different ones).
+  // We don't fail hard if one endpoint 404s; we just try the next.
+  const endpointsToTry = [
+    // Seen in your RapidAPI UI list:
+    // "Domain Data" (common for backlink-ish metrics on many SEO audit APIs)
+    { path: "/domain-data", query: { domain } },
+
+    // Another common naming pattern
+    { path: "/domain_data", query: { domain } },
+
+    // In case the API only supports url param (varies)
+    { path: "/aiseo.php", query: { url: domain } },
+  ];
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    let lastErr = null;
+
+    for (const ep of endpointsToTry) {
+      const u = new URL(`https://${host}${ep.path}`);
+      Object.entries(ep.query).forEach(([k, v]) => {
+        if (v != null) u.searchParams.set(k, String(v));
+      });
+
+      try {
+        const res = await fetch(u.toString(), {
+          method: "GET",
+          headers: {
+            "X-RapidAPI-Key": key,
+            "X-RapidAPI-Host": host,
+          },
+          signal: controller.signal,
+        });
+
+        const text = await res.text();
+        let json = null;
+        try {
+          json = text ? JSON.parse(text) : null;
+        } catch {
+          json = null;
+        }
+
+        if (!res.ok) {
+          lastErr = new Error(
+            `RapidAPI ${ep.path} failed: ${res.status} - ${text.slice(0, 200)}`
+          );
+          continue;
+        }
+
+        // Extract counts best-effort from any JSON shape.
+        const { backlinks, referringDomains, referringPages, nofollowPages } =
+          scanForCounts(json);
+
+        return {
+          ok: true,
+          raw: json,
+          backlinksSummary: {
+            backlinks: backlinks ?? 0,
+            referring_domains: referringDomains ?? 0,
+            referring_pages: referringPages ?? 0,
+            referring_pages_nofollow: nofollowPages ?? 0,
+          },
+        };
+      } catch (e) {
+        lastErr = e;
+        continue;
+      }
+    }
+
+    throw lastErr || new Error("RapidAPI fallback failed (no endpoint worked)");
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /**
  * Try to extract a "domain authority" style score from OpenPageRank payload
  */
 function pickAuthorityScore(openPageRankPayload) {
   if (!openPageRankPayload) return null;
-
   if (typeof openPageRankPayload === "number") return openPageRankPayload;
 
   const candidatePaths = [
@@ -380,7 +527,7 @@ function buildInfoPanel(unified) {
   };
 }
 
-// ✅ NEW: unify "seoRows" from different shapes safely
+// ✅ unify "seoRows" from different shapes safely
 function ensureSeoRows(unified) {
   if (Array.isArray(unified.seoRows)) return;
 
@@ -397,7 +544,7 @@ function ensureSeoRows(unified) {
   }
 }
 
-// ✅ NEW: merge helper for provider output that might be nested
+// ✅ merge helper for provider output that might be nested
 function mergeProviderResult(unified, providerKey, providerResult) {
   if (!providerResult) return;
 
@@ -414,15 +561,16 @@ function mergeProviderResult(unified, providerKey, providerResult) {
 }
 
 /**
- * ✅ NEW: Normalize response shape so UI tabs don't break:
+ * Normalize response shape so UI tabs don't break:
  * - Provide `serper` alias from `serp` (your FAQ component expects `seoData.serper`)
  * - Ensure Links-tab fields exist on `dataForSeo` even if API returns nothing
  */
 function normalizeForUi(unified) {
-  // Alias: { serp: { topResults, peopleAlsoAsk, ... } } -> { serper: { organic, peopleAlsoAsk, ... } }
   if (unified?.serp && !unified?.serper) {
     unified.serper = {
-      organic: Array.isArray(unified.serp?.topResults) ? unified.serp.topResults : [],
+      organic: Array.isArray(unified.serp?.topResults)
+        ? unified.serp.topResults
+        : [],
       peopleAlsoAsk: Array.isArray(unified.serp?.peopleAlsoAsk)
         ? unified.serp.peopleAlsoAsk
         : [],
@@ -434,7 +582,6 @@ function normalizeForUi(unified) {
     };
   }
 
-  // Links tab expects these to exist under dataForSeo
   if (unified?.dataForSeo) {
     if (!Array.isArray(unified.dataForSeo.backlinkDomains)) {
       unified.dataForSeo.backlinkDomains = [];
@@ -451,6 +598,22 @@ function normalizeForUi(unified) {
   return unified;
 }
 
+function needsBacklinkFallback(unified) {
+  const bfs = unified?.dataForSeo?.backlinksSummary;
+  if (!bfs) return true;
+
+  const b = toNumber(bfs.backlinks);
+  const rd = toNumber(bfs.referring_domains);
+
+  // If both missing -> fallback
+  if (b == null && rd == null) return true;
+
+  // If both are explicitly 0 -> fallback (your current pain)
+  if ((b ?? 0) === 0 && (rd ?? 0) === 0) return true;
+
+  return false;
+}
+
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -462,12 +625,10 @@ export async function POST(request) {
       languageCode = "en",
       depth = 10,
 
-      // ✅ NEW:
-      // If true, we force DataForSEO into "keywordsOnly" mode
-      // so suggested keywords show up quickly (InfoPanel).
+      // If true, force DataForSEO into "keywordsOnly" mode
       keywordsOnly = false,
 
-      // ✅ still supported
+      // Providers
       providers = ["psi", "authority", "serper", "dataforseo", "content"],
     } = body || {};
 
@@ -547,7 +708,6 @@ export async function POST(request) {
         tasks.push(
           fetchOpenPageRank(domain).then(
             (result) => {
-              console.log("OpenPageRank RAW RESPONSE:", result);
               return { key: "authority", ok: true, result };
             },
             (error) => ({ key: "authority", ok: false, error: error.message })
@@ -570,12 +730,7 @@ export async function POST(request) {
             language_code: languageCode,
             countryCode,
             depth,
-
-            // ✅ NEW: fast mode
             keywordsOnly: Boolean(keywordsOnly),
-
-            // Optional: keep subtopics ON by default
-            // includeSubtopics: true,
           }).then(
             (result) => ({ key: "dataforseo", ok: true, result }),
             (error) => ({ key: "dataforseo", ok: false, error: error.message })
@@ -597,6 +752,44 @@ export async function POST(request) {
         }
         return acc;
       }, {});
+
+      // ✅ RapidAPI fallback for backlinks/ref domains (only when needed)
+      if (
+        providers.includes("dataforseo") &&
+        domain &&
+        !keywordsOnly &&
+        needsBacklinkFallback(unified)
+      ) {
+        try {
+          const rapid = await fetchRapidApiBacklinkFallback(domain);
+
+          unified.dataForSeo = unified.dataForSeo || {};
+          unified.dataForSeo.backlinksSummary =
+            unified.dataForSeo.backlinksSummary || {};
+
+          // Fill only if missing/zero
+          unified.dataForSeo.backlinksSummary.backlinks =
+            toNumber(unified.dataForSeo.backlinksSummary.backlinks) ?? 0;
+          unified.dataForSeo.backlinksSummary.referring_domains =
+            toNumber(unified.dataForSeo.backlinksSummary.referring_domains) ?? 0;
+
+          if (
+            unified.dataForSeo.backlinksSummary.backlinks === 0 &&
+            unified.dataForSeo.backlinksSummary.referring_domains === 0
+          ) {
+            unified.dataForSeo.backlinksSummary = {
+              ...unified.dataForSeo.backlinksSummary,
+              ...rapid.backlinksSummary,
+            };
+            unified._meta = unified._meta || {};
+            unified._meta.backlinksFallback = "rapidapi";
+          }
+        } catch (e) {
+          unified._errors = unified._errors || {};
+          unified._errors.rapidapi =
+            e?.message || "RapidAPI backlink fallback failed";
+        }
+      }
 
       // -----------------------------------------
       // 2. CONTENT PIPELINE
@@ -623,7 +816,7 @@ export async function POST(request) {
         }
       }
 
-      // ✅ normalize shapes for UI consumers (Links + FAQs)
+      // ✅ normalize shapes for UI consumers
       normalizeForUi(unified);
 
       // -----------------------------------------
@@ -686,6 +879,7 @@ export async function POST(request) {
       unified.infoPanel = buildInfoPanel(unified);
 
       unified._meta = {
+        ...(unified._meta || {}),
         url,
         domain,
         keyword: keyword || null,
@@ -827,6 +1021,57 @@ export async function POST(request) {
             }
           }
 
+          // ✅ RapidAPI fallback in SSE mode
+          if (
+            providers.includes("dataforseo") &&
+            domain &&
+            !keywordsOnly &&
+            needsBacklinkFallback(unified)
+          ) {
+            send("status", {
+              stage: "rapidapi",
+              state: "start",
+              message: "Falling back for backlink metrics…",
+            });
+
+            try {
+              const rapid = await fetchRapidApiBacklinkFallback(domain);
+
+              unified.dataForSeo = unified.dataForSeo || {};
+              unified.dataForSeo.backlinksSummary =
+                unified.dataForSeo.backlinksSummary || {};
+
+              const b = toNumber(unified.dataForSeo.backlinksSummary.backlinks) ?? 0;
+              const rd =
+                toNumber(unified.dataForSeo.backlinksSummary.referring_domains) ?? 0;
+
+              if (b === 0 && rd === 0) {
+                unified.dataForSeo.backlinksSummary = {
+                  ...unified.dataForSeo.backlinksSummary,
+                  ...rapid.backlinksSummary,
+                };
+                unified._meta = unified._meta || {};
+                unified._meta.backlinksFallback = "rapidapi";
+              }
+
+              send("status", {
+                stage: "rapidapi",
+                state: "done",
+                message: "Backlink fallback applied",
+              });
+            } catch (e) {
+              unified._errors = unified._errors || {};
+              unified._errors.rapidapi =
+                e?.message || "RapidAPI backlink fallback failed";
+
+              send("status", {
+                stage: "rapidapi",
+                state: "error",
+                message: unified._errors.rapidapi,
+              });
+            }
+          }
+
           // 2) Content pipeline
           if (providers.includes("content") && !keywordsOnly) {
             send("status", {
@@ -875,7 +1120,7 @@ export async function POST(request) {
             }
           }
 
-          // ✅ normalize shapes for UI consumers (Links + FAQs)
+          // ✅ normalize shapes for UI consumers
           normalizeForUi(unified);
 
           send("status", {
@@ -938,6 +1183,7 @@ export async function POST(request) {
           unified.infoPanel = buildInfoPanel(unified);
 
           unified._meta = {
+            ...(unified._meta || {}),
             url,
             domain,
             keyword: keyword || null,
@@ -979,6 +1225,8 @@ export async function POST(request) {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
+        // Optional if you deploy behind nginx/proxies:
+        // "X-Accel-Buffering": "no",
       },
     });
   } catch (err) {
