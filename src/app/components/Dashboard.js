@@ -84,6 +84,13 @@ function pickFirstNumber(...cands) {
   return undefined;
 }
 
+function pickFirstPositiveNumber(...cands) {
+  for (const c of cands) {
+    if (typeof c === "number" && Number.isFinite(c) && c > 0) return c;
+  }
+  return undefined;
+}
+
 /**
  * Build realistic fallback performance metrics:
  * Priority order:
@@ -144,6 +151,41 @@ function buildPerformanceFallback({ domain, api = {}, jsonRow = null }) {
     organicKeywords: { total: kwTotal, top3, top10, top100 },
     leads: { monthly: leadsMonthly, goal: leadsGoal, contactForm, newsletter, growth: leadsGrowth },
   };
+}
+
+/**
+ * Build realistic fallback links metrics:
+ * Priority order:
+ * 1) DataForSEO (api) values if present and > 0
+ * 2) seo-data.json row if present and > 0
+ * 3) deterministic "realistic" random (stable per domain)
+ */
+function buildLinksFallback({ domain, api = {}, jsonRow = null }) {
+  const seed = hashStringToSeed(domain || "example.com");
+  const rnd = mulberry32(seed ^ 0xA5A5A5A5);
+
+  const jsonRefDomains = jsonRow?.referringDomains;
+  const jsonBacklinks = jsonRow?.backlinks;
+
+  // realistic randoms (stable per domain)
+  const randRefDomains = Math.round(clamp(40 + rnd() * 18000, 40, 18000));
+  const randBacklinks = Math.round(
+    clamp(randRefDomains * (6 + rnd() * 65), 250, 1_500_000)
+  );
+
+  const referringDomains =
+    pickFirstPositiveNumber(api.referringDomains, jsonRefDomains, randRefDomains) ?? 0;
+
+  // Backlinks should usually be larger than ref domains
+  const backlinksCandidate =
+    pickFirstPositiveNumber(api.backlinks, jsonBacklinks, randBacklinks) ?? 0;
+
+  const backlinks =
+    backlinksCandidate > 0
+      ? Math.max(backlinksCandidate, referringDomains * 3)
+      : 0;
+
+  return { referringDomains, backlinks };
 }
 
 function LikeDislike() {
@@ -675,6 +717,22 @@ const fallbackSelected = useMemo(() => {
       jsonRow: fallbackSelected,
     });
 
+    const linksFallback = buildLinksFallback({
+      domain: seo._meta?.domain || domain,
+      api: {
+        referringDomains:
+          typeof backlinksSummary?.referring_domains === "number"
+            ? backlinksSummary.referring_domains
+            : 0,
+        backlinks:
+          typeof backlinksSummary?.backlinks === "number"
+            ? backlinksSummary.backlinks
+            : 0,
+      },
+      jsonRow: fallbackSelected,
+    });
+
+
 
 const mapped = {
       domain: seo._meta?.domain || domain,
@@ -690,14 +748,8 @@ const mapped = {
       trustBar: qualityFromSpam.h,
       medQuality: qualityFromSpam.m,
       lowQuality: qualityFromSpam.l,
-      referringDomains:
-        typeof backlinksSummary.referring_domains === "number"
-          ? backlinksSummary.referring_domains
-          : undefined,
-      backlinks:
-        typeof backlinksSummary.backlinks === "number"
-          ? backlinksSummary.backlinks
-          : undefined,
+      referringDomains: linksFallback.referringDomains || undefined,
+      backlinks: linksFallback.backlinks || undefined,
       dofollowPct:
         typeof backlinksSummary.referring_pages === "number" &&
         typeof backlinksSummary.referring_pages_nofollow === "number" &&

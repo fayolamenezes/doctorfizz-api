@@ -100,3 +100,37 @@ export async function buildOpportunityCard(url) {
     wordCount,
   };
 }
+
+/**
+ * Used by scan-draft job.
+ * Returns: { title, description, wordCount }
+ */
+export async function extractSeoData(url) {
+  let html = "";
+  let title = "";
+  let description = "";
+
+  try {
+    const fetched = await fetchHtml(url);
+    html = fetched.html || "";
+    title = extractTitle(html);
+    description = extractMetaDescription(html);
+  } catch {
+    // ignore
+  }
+
+  let wordCount = 0;
+  try {
+    const extracted = await extractPageText(url);
+    const text = extracted?.apyhub?.text || "";
+    wordCount = text ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+  } catch {
+    wordCount = 0;
+  }
+
+  return {
+    title: safeTrim(title || "", 70),
+    description: safeTrim(description || "", 110),
+    wordCount,
+  };
+}
